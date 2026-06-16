@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opr</title>
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<!-- ECRAN DE LOGIN -->
+<div id="loginScreen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;position:fixed;top:0;left:0;width:100%;z-index:9999;"></div>
+
+<!-- APPLICATION PRINCIPALE -->
+<div id="appContainer" style="display:none;">
+<div class="container">
+
+  <!-- MENU LATERAL -->
+  <aside class="sidebar">
+
+    <div class="logo">🚗 Opr</div>
+    <div style="position:relative;margin:8px 12px 0;">
+      <input type="text" id="rechercheGlobaleInput"
+        placeholder="🔍 Recherche globale..."
+        oninput="rechercheGlobale(this.value)"
+        autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding:8px 12px;font-size:13px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;">
+      <div id="resultatsRecherche" style="display:none;position:absolute;top:100%;left:0;right:0;background:#1e293b;border:1px solid #334155;border-radius:8px;box-shadow:0 8px 24px #0009;z-index:5000;max-height:320px;overflow-y:auto;margin-top:4px;"></div>
+    </div>
+
+    <nav>
+      <a href="#" onclick="showPage('dashboard');setActive(this)">🏠 Tableau de bord</a>
+      <a href="#" onclick="showPage('clients');setActive(this)">👤 Clients</a>
+      <a href="#" onclick="showPage('vehicules');setActive(this)">🚗 Véhicules</a>
+      <a href="#" onclick="showPage('agenda');setActive(this)">📅 Rendez-vous</a>
+
+      <div class="nav-section-label">🪟 VITRAGE</div>
+      <a href="#" onclick="showPage('dossiers');setActive(this)">📁 Dossiers vitrage</a>
+      <a href="#" onclick="showPage('assurances');setActive(this)">🛡 Assurances</a>
+
+      <div class="nav-section-label">🔩 MÉCANIQUE</div>
+      <a href="#" onclick="showPage('mecanique');setActive(this)">🔩 Dossiers mécanique</a>
+
+      <div class="nav-section-label">💼 GESTION</div>
+      <a href="#" onclick="showPage('devisFacture');setActive(this)">🧾 Devis / Factures</a>
+      <a href="#" onclick="showPage('entreprise');setActive(this)">⚙ Entreprise</a>
+      <a href="#" id="lienAdmin" onclick="showPage('administration');setActive(this)" style="display:none;border-top:1px solid #1e3a5f;margin-top:8px;padding-top:12px;color:#a78bfa;">🔑 Administration</a>
+
+      <div class="nav-section-label">⚙ OUTILS</div>
+      <a href="#" id="btnTheme" onclick="toggleTheme();return false;">☀️ Mode clair</a>
+      <a href="#" onclick="exporterExcelGlobal();return false;">📊 Export Excel</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div id="bandeauFirebase" style="text-align:center;font-size:12px;padding:6px;margin-bottom:8px;background:#0f172a;border-radius:6px;border:1px solid #1e293b;" title="Statut synchronisation">
+        <span style="color:#64748b;">⏳ Connexion...</span>
+      </div>
+      <div id="indicateurSauvegarde" style="display:none;align-items:center;gap:8px;background:#7c2d12;border:1px solid #ea580c;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#fed7aa;">
+        ⚠️ Données non sauvegardées
+        <button onclick="saveData();toast('Sauvegardé ✓')" style="margin-left:auto;padding:3px 8px;font-size:11px;background:#ea580c;border:none;">💾 Sauvegarder</button>
+      </div>
+      <div class="version-info">Opr v2</div>
+    </div>
+
+  </aside>
+
+  <!-- CONTENU -->
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="page">
+
+      <div class="hero hero-voiture">
+        <div class="hero-overlay">
+          <h1>🚗 Opr</h1>
+          <p>Gestion complète vitrage automobile, dossiers sinistres, assurances, devis et factures.</p>
+        </div>
+      </div>
+
+      <!-- Tableau de bord séparé -->
+      <div class="cards">
+        <div class="card compteur-card compteur-encours">
+          <h2>🪟 Vitrage</h2>
+          <h3>Dossiers vitrage</h3>
+          <span id="dashVitrageTotal">0</span>
+          <p style="margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7;">
+            ⏳ En attente : <b id="dashVitrageAttente">0</b><br>
+            🔧 En cours : <b id="dashVitrageEncours">0</b><br>
+            ✅ Terminés : <b id="dashVitrageTermine">0</b><br>
+            🧾 Facturés : <b id="dashVitrageFacture">0</b>
+          </p>
+          <h3 style="margin-top:14px;">CA vitrage</h3>
+          <span id="dashVitrageCA" style="font-size:28px;">0 €</span>
+        </div>
+
+        <div class="card compteur-card compteur-termine">
+          <h2>🔩 Mécanique</h2>
+          <h3>Dossiers mécanique</h3>
+          <span id="dashMecaTotal">0</span>
+          <p style="margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7;">
+            📋 OR : <b id="dashMecaOR">0</b><br>
+            ⏳ En attente : <b id="dashMecaAttente">0</b><br>
+            📦 Attente pièces : <b id="dashMecaPieces">0</b><br>
+            🔧 En cours : <b id="dashMecaEncours">0</b><br>
+            ✅ Terminés : <b id="dashMecaTermine">0</b><br>
+            🧾 Facturés : <b id="dashMecaFacture">0</b>
+          </p>
+          <h3 style="margin-top:14px;">CA mécanique</h3>
+          <span id="dashMecaCA" style="font-size:28px;">0 €</span>
+        </div>
+
+        <div class="card compteur-card compteur-facture">
+          <h2>💰 Global</h2>
+          <h3>Total dossiers</h3>
+          <span id="totalDossiers">0</span>
+          <p style="margin-top:12px;color:var(--muted);font-size:13px;line-height:1.7;">
+            👤 Clients : <b id="totalClients">0</b><br>
+            🚗 Véhicules : <b id="totalVehicules">0</b><br>
+            🪟 Dossiers vitrage : <b id="dashGlobalVitrage">0</b><br>
+            🔩 Dossiers mécanique : <b id="dashGlobalMeca">0</b>
+          </p>
+          <h3 style="margin-top:14px;">CA global</h3>
+          <span id="caMois" style="font-size:28px;">0 €</span>
+        </div>
+      </div>
+
+      <!-- Compatibilité anciens compteurs, masqués -->
+      <div style="display:none;">
+        <span id="compteurAttente">0</span>
+        <span id="compteurEncours">0</span>
+        <span id="compteurTermine">0</span>
+        <span id="compteurFacture">0</span>
+      </div>
+
+      <!-- Dossiers récents -->
+      <div class="card">
+        <h2>📋 Dossiers récents</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Client</th>
+                <th>Véhicule</th>
+                <th>Assurance</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody id="listeDossiersRecent"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- RDV du jour -->
+      <div class="card">
+        <h2>📅 Rendez-vous du jour</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Heure</th>
+                <th>Client</th>
+                <th>Véhicule</th>
+                <th>Motif</th>
+              </tr>
+            </thead>
+            <tbody id="rdvDuJour"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Statistiques -->
+      <div class="cards">
+        <div class="card">
+          <h2>📊 Statistiques assurances</h2>
+          <div id="statsAssurances"></div>
+        </div>
+        <div class="card">
+          <h2>🔧 Statistiques vitrages</h2>
+          <div id="statsVitrages"></div>
+        </div>
+      </div>
+
+      <!-- Graphiques CA mensuel -->
+      <div class="cards" style="margin-bottom:20px;">
+        <div class="card">
+          <h2>📊 CA mensuel — Vitrage vs Mécanique</h2>
+          <canvas id="graphiqueCAMensuel" width="800" height="220" style="width:100%;display:block;margin:0 auto;"></canvas>
+        </div>
+        <div class="card" style="max-width:340px;">
+          <h2>🏆 Top 5 clients</h2>
+          <div id="topClients" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <!-- Graphiques dossiers -->
+      <div class="cards">
+        <div class="card">
+          <h2>📊 Dossiers vitrage — 6 derniers mois</h2>
+          <canvas id="graphiqueMensuel" width="700" height="180" style="width:100%;max-width:700px;display:block;margin:0 auto;"></canvas>
+        </div>
+        <div class="card">
+          <h2>📊 Dossiers mécanique — 6 derniers mois</h2>
+          <canvas id="graphiqueMensuelMecanique" width="700" height="180" style="width:100%;max-width:700px;display:block;margin:0 auto;"></canvas>
+        </div>
+      </div>
+      <!-- Alertes dossiers en retard -->
+      <div id="alertesRetard" style="margin-bottom:20px;"></div>
+
+    </section>
+
+    <!-- CLIENTS -->
+    <section id="clients" class="page hidden">
+
+      <h2>👤 Clients</h2>
+
+      <div class="form-grid">
+        <input type="text" id="nomClient" placeholder="Nom">
+        <input type="text" id="prenomClient" placeholder="Prénom">
+        <input type="text" id="telephoneClient" placeholder="Téléphone">
+        <input type="text" id="rechercheClient" placeholder="🔍 Rechercher un client..." oninput="rechercherClient()">
+        <button onclick="ajouterClient()">➕ Ajouter client</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Prénom</th>
+              <th>Téléphone</th>
+              <th>Dossiers</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeClients"></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- VEHICULES -->
+    <section id="vehicules" class="page hidden">
+
+      <h2>🚗 Véhicules</h2>
+
+      <div class="form-grid">
+
+        <input type="text" id="rechercheHistorique" placeholder="🔍 Historique par immatriculation" onkeyup="historiqueVehicule()">
+
+        <select id="marqueVehicule" onchange="chargerModeles()">
+          <option value="">Choisir une marque</option>
+          <option>Renault</option>
+          <option>Peugeot</option>
+          <option>Citroën</option>
+          <option>Dacia</option>
+          <option>Toyota</option>
+          <option>Volkswagen</option>
+          <option>BMW</option>
+          <option>Mercedes-Benz</option>
+          <option>Audi</option>
+          <option>Ford</option>
+          <option>Opel</option>
+          <option>Nissan</option>
+          <option>Hyundai</option>
+          <option>Kia</option>
+          <option>Fiat</option>
+          <option>Seat</option>
+          <option>Skoda</option>
+          <option>Volvo</option>
+          <option>Tesla</option>
+          <option>Suzuki</option>
+          <option>Mazda</option>
+          <option>Mini</option>
+          <option>Land Rover</option>
+          <option>Porsche</option>
+          <option>Lexus</option>
+          <option>Alfa Romeo</option>
+          <option>Jeep</option>
+          <option value="Autre...">Autre...</option>
+        </select>
+
+        <input type="text" id="autreMarque" placeholder="Marque personnalisée" style="display:none;">
+
+        <select id="modeleVehicule">
+          <option value="">Choisir un modèle</option>
+        </select>
+
+        <input type="text" id="autreModele" placeholder="Modèle personnalisé" style="display:none;">
+
+        <input type="text" id="immatVehicule" placeholder="Immatriculation">
+
+        <button onclick="ajouterVehicule()">➕ Ajouter véhicule</button>
+
+      </div>
+
+      <div id="historiqueVehicule"></div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Marque</th>
+              <th>Modèle</th>
+              <th>Immatriculation</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeVehicules"></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- DOSSIERS -->
+    <section id="dossiers" class="page hidden">
+
+      <h2>📁 Nouveau dossier</h2>
+
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+
+        <input type="text" id="clientDossier" placeholder="Client">
+
+        <select id="vehiculeDossier">
+          <option value="">Choisir une marque</option>
+          <option>Renault</option>
+          <option>Peugeot</option>
+          <option>Citroën</option>
+          <option>Dacia</option>
+          <option>Toyota</option>
+          <option>Volkswagen</option>
+          <option>BMW</option>
+          <option>Mercedes-Benz</option>
+          <option>Audi</option>
+          <option>Ford</option>
+          <option>Opel</option>
+          <option>Nissan</option>
+          <option>Hyundai</option>
+          <option>Kia</option>
+          <option>Fiat</option>
+          <option>Seat</option>
+          <option>Skoda</option>
+          <option>Volvo</option>
+          <option>Tesla</option>
+          <option>Suzuki</option>
+          <option>Mazda</option>
+          <option>Mini</option>
+          <option>Land Rover</option>
+          <option>Porsche</option>
+          <option>Lexus</option>
+          <option>Alfa Romeo</option>
+          <option>Jeep</option>
+          <option>Autre</option>
+        </select>
+
+        <input type="text" id="modeleDossier" placeholder="Modèle">
+
+        <input type="text" id="immatDossier" placeholder="Immatriculation">
+
+        <input type="text" id="telephoneDossier" placeholder="Téléphone">
+
+        <input type="text" id="adresseDossier" placeholder="Adresse">
+
+        <input type="text" id="sinistreDossier" placeholder="N° Sinistre">
+
+        <input type="text" id="contratDossier" placeholder="N° Contrat">
+
+        <input type="text" id="kilometrageDossier" placeholder="Kilométrage">
+
+        <div style="position:relative;">
+          <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#0f172a;padding:0 4px;z-index:1;">📅 Date du sinistre</label>
+          <input type="date" id="dateSinistre" style="width:100%;padding-top:14px;">
+        </div>
+
+        <input type="text" id="lieuSinistre" placeholder="Lieu du sinistre">
+
+        <select id="franchiseDossier" onchange="gestionFranchise()">
+          <option value="Non">Franchise : Non</option>
+          <option value="Oui">Franchise : Oui</option>
+        </select>
+
+        <input type="number" id="montantFranchise" placeholder="Montant franchise (€)" style="display:none;">
+
+        <select id="vitrageDossier">
+          <option value="">Type de vitrage</option>
+          <option>Pare-brise</option>
+          <option>Lunette arrière</option>
+          <option>Vitre avant gauche</option>
+          <option>Vitre avant droite</option>
+          <option>Vitre arrière gauche</option>
+          <option>Vitre arrière droite</option>
+          <option>Custode gauche</option>
+          <option>Custode droite</option>
+          <option>Toit panoramique</option>
+          <option>Toit ouvrant</option>
+          <option>Phare avant gauche</option>
+          <option>Phare avant droit</option>
+          <option>Autre</option>
+        </select>
+
+        <select id="typeDommage">
+          <option value="">Type de dommage</option>
+          <option value="Impact">Impact (≤ 30 cm)</option>
+          <option value="Impact +30cm">Impact (+ 30 cm)</option>
+          <option value="Fissure">Fissure</option>
+          <option value="Eclat">Éclat / Rayure</option>
+          <option value="Bris total">Bris total</option>
+        </select>
+
+        <select id="assuranceDossier" onchange="remplirInfosAssurance()">
+          <option value="">Choisir une assurance</option>
+        </select>
+
+        <input type="text" id="adresseAssurance" placeholder="Adresse assurance">
+
+        <input type="text" id="agenceAssurance" placeholder="Agence / Courtier">
+
+        <input type="text" id="telephoneAssurance" placeholder="Téléphone assurance">
+
+        <input type="email" id="emailAssurance" placeholder="Email assurance">
+
+        <input type="text" id="signatureClient" placeholder="Nom et prénom du signataire">
+
+        <input type="number" id="devisDossier" placeholder="Montant devis (€)">
+        <input type="number" id="factureDossier" placeholder="Montant facture (€)">
+        <input type="number" id="montantRembourse" placeholder="Montant remboursé assurance (€)" step="0.01">
+        <div style="position:relative;">
+          <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#0f172a;padding:0 4px;z-index:1;">🛡 Prise en charge assurance</label>
+          <select id="statutPriseEnCharge" style="width:100%;">
+            <option value="">— Prise en charge —</option>
+            <option value="En attente">⏳ En attente</option>
+            <option value="Acceptée">✅ Acceptée</option>
+            <option value="Refusée">❌ Refusée</option>
+            <option value="Partielle">⚠️ Partielle</option>
+            <option value="Sans assurance">🚫 Sans assurance</option>
+          </select>
+        </div>
+
+        <div style="position:relative;">
+          <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#0f172a;padding:0 4px;z-index:1;">🔧 Date de réparation</label>
+          <input type="date" id="dateReparation" style="width:100%;padding-top:14px;">
+        </div>
+
+        <input type="text" id="technicien" placeholder="Technicien">
+
+        <div style="position:relative;">
+          <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#0f172a;padding:0 4px;z-index:1;">📋 Statut</label>
+          <select id="statutDossier" style="width:100%;">
+            <option>En attente</option>
+            <option>En cours</option>
+            <option>Terminé</option>
+            <option>Facturé</option>
+          </select>
+        </div>
+
+        <textarea id="observationDossier" placeholder="Observations / Notes" rows="3"></textarea>
+
+        <div class="champ-fichier">
+          <label>📷 Photo véhicule</label>
+          <input type="file" id="photoDossier" accept="image/*">
+        </div>
+
+        <div class="champ-fichier">
+          <label>📄 Devis PDF</label>
+          <input type="file" id="fichierDevis" accept=".pdf">
+        </div>
+
+        <div class="champ-fichier">
+          <label>🧾 Facture PDF</label>
+          <input type="file" id="fichierFacture" accept=".pdf">
+        </div>
+
+        <input type="text" id="rechercheDossier" placeholder="🔍 Rechercher un dossier (client, N°...)" oninput="rechercherDossier()">
+        <input type="text" id="rechercheImmat" placeholder="🚗 Immatriculation" oninput="rechercherDossier()" style="max-width:180px;">
+        <select id="filtreStatutDossier" onchange="rechercherDossier()" style="max-width:160px;">
+          <option value="">Tous les statuts</option>
+          <option value="En attente">⏳ En attente</option>
+          <option value="En cours">🔧 En cours</option>
+          <option value="Terminé">✅ Terminé</option>
+          <option value="Facturé">🧾 Facturé</option>
+        </select>
+        <input type="date" id="filtreDateDebut" onchange="rechercherDossier()" title="Période du" style="max-width:150px;">
+        <input type="date" id="filtreDateFin"   onchange="rechercherDossier()" title="Période au"   style="max-width:150px;">
+        <button onclick="ajouterDossier()">➕ Ajouter dossier</button>
+
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Client</th>
+              <th>Véhicule</th>
+              <th>Immatriculation</th>
+              <th>Sinistre</th>
+              <th>Assurance</th>
+              <th>Statut</th>
+              <th>Photo</th>
+              <th>Devis</th>
+              <th>Facture</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeDossiers"></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ASSURANCES -->
+    <section id="assurances" class="page hidden">
+
+      <h2>🛡 Assurances</h2>
+
+      <div class="form-grid">
+        <input type="text" id="nomAssurance" placeholder="Nom assurance">
+        <input type="text" id="adresseAssuranceFiche" placeholder="Adresse assurance">
+        <input type="text" id="telephoneAssuranceFiche" placeholder="Téléphone assurance">
+        <input type="email" id="emailAssuranceFiche" placeholder="Email assurance">
+        <input type="text" id="courtierAssurance" placeholder="Agence / Courtier">
+        <input type="text" id="franchiseAssuranceFiche" placeholder="Franchise (ex: 0 €, ou 75 € si BDG)">
+        <input type="text" id="declarationAssuranceFiche" placeholder="Mode de déclaration (ex: Déclaration + cession de créance)">
+        <input type="text" id="documentsAssuranceFiche" placeholder="Documents à fournir">
+        <input type="text" id="facturationAssuranceFiche" placeholder="Adresse de facturation (si différente)">
+        <input type="text" id="relanceAssuranceFiche" placeholder="Relance / suivi règlement">
+        <button onclick="ajouterAssurance()">➕ Ajouter assurance</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Téléphone</th>
+              <th>Email</th>
+              <th>Adresse / Facturation</th>
+              <th>Franchise</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeAssurances"></tbody>
+        </table>
+      </div>
+
+      <div id="detailAssurance"></div>
+
+    </section>
+
+    <!-- AGENDA -->
+    <section id="agenda" class="page hidden">
+
+      <h2>📅 Rendez-vous</h2>
+
+      <!-- Calendrier -->
+      <div class="card" style="margin-bottom:20px;">
+        <div id="calendrierRdv" data-annee="" data-mois=""></div>
+      </div>
+
+      <div class="form-grid">
+        <input type="date" id="dateRdv">
+        <input type="time" id="heureRdv">
+        <input type="text" id="clientRdv" placeholder="Client">
+        <input type="text" id="vehiculeRdv" placeholder="Véhicule">
+        <input type="text" id="immatRdv" placeholder="Immatriculation">
+        <input type="text" id="motifRdv" placeholder="Motif du rendez-vous">
+        <select id="statutRdv">
+          <option>Prévu</option>
+          <option>Confirmé</option>
+          <option>Terminé</option>
+          <option>Annulé</option>
+        </select>
+        <button onclick="ajouterRendezVous()">➕ Ajouter rendez-vous</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Heure</th>
+              <th>Client</th>
+              <th>Véhicule</th>
+              <th>Immat.</th>
+              <th>Motif</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeRendezVous"></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ENTREPRISE -->
+    <section id="entreprise" class="page hidden">
+
+      <h2>⚙ Informations Entreprise</h2>
+
+      <div class="form-grid">
+        <input type="text" id="societeNom" placeholder="Nom de la société">
+        <input type="text" id="societeAdresse" placeholder="Adresse">
+        <input type="text" id="societeTelephone" placeholder="Téléphone">
+        <input type="email" id="societeEmail" placeholder="Email">
+        <input type="text" id="societeSiret" placeholder="SIRET">
+        <div class="champ-fichier">
+          <label>🖼 Logo société</label>
+          <input type="file" id="societeLogo" accept="image/*">
+        </div>
+        <button onclick="sauvegarderEntreprise()">💾 Enregistrer</button>
+        <button onclick="exporterDonnees()">📤 Exporter les données</button>
+        <div class="champ-fichier">
+          <label>📥 Importer une sauvegarde (.json)</label>
+          <input type="file" id="importData" accept=".json" onchange="importerDonnees(event)">
+        </div>
+        <button class="delete-btn" onclick="viderEntreprise()">🗑 Réinitialiser les infos société</button>
+      </div>
+
+      <div id="apercuEntreprise"></div>
+
+    </section>
+
+    <!-- FICHE DOSSIER -->
+    <section id="ficheDossier" class="page hidden">
+      <h2>📁 Fiche dossier</h2>
+      <div id="detailDossier"></div>
+    </section>
+
+
+    <!-- DEVIS / FACTURE -->
+    <section id="devisFacture" class="page hidden">
+
+      <h2>🧾 Devis & Factures</h2>
+
+      <!-- Rattachement dossier -->
+      <div class="card" style="margin-bottom:16px;">
+
+        <!-- Recherche dossier -->
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">🔍 Rechercher un dossier (client, N°, immat...)</label>
+          <input type="text" id="rechercheDossierDevis" placeholder="Tapez pour rechercher..." oninput="filtrerDossiersDevis()" autocomplete="off">
+          <div id="resultatsRechercheDevis" style="display:none;background:#0f172a;border:1px solid #334155;border-radius:10px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:100;position:relative;"></div>
+        </div>
+
+        <!-- Dossier sélectionné -->
+        <div id="dossierSelectionneInfo" style="display:none;background:#1e3a5f22;border:1px solid #2563eb44;border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Dossier rattaché</span>
+              <p id="infoNumeroDossier" style="font-weight:bold;color:#38bdf8;font-size:16px;margin-top:2px;"></p>
+              <p id="infoClientDossier" style="color:#f1f5f9;font-size:14px;"></p>
+              <p id="infoVehiculeDossier" style="color:var(--muted);font-size:13px;"></p>
+              <p id="infoAssuranceDossier" style="color:var(--muted);font-size:13px;"></p>
+            </div>
+            <button onclick="retirerDossierRattache()" class="delete-btn" style="padding:6px 10px;font-size:12px;">✖ Retirer</button>
+          </div>
+        </div>
+
+        <!-- Champ caché pour l'index -->
+        <select id="dossierRattache" style="display:none;">
+          <option value="">-- Rattacher à un dossier --</option>
+        </select>
+
+        <div class="form-grid" style="margin:0;background:transparent;padding:0;border:none;">
+          <input type="text" id="numeroDocument" placeholder="N° document (auto)" readonly style="color:#38bdf8;font-weight:bold;cursor:default;">
+          <input type="text" id="titreDocument" placeholder="Titre (ex: Remplacement pare-brise)">
+          <select id="typeDocument" onchange="majNumeroDocument()">
+            <option value="devis">Devis</option>
+            <option value="facture">Facture</option>
+          </select>
+          <input type="date" id="dateDocument">
+          <input type="text" id="technicienDocument" placeholder="Technicien">
+        </div>
+
+      </div>
+
+      <!-- Lignes produits -->
+      <div class="card" style="margin-bottom:16px;">
+        <h2>📦 Lignes de facturation</h2>
+        <div class="form-grid" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:10px;">
+          <input type="text" id="ligneDesignation" placeholder="Désignation">
+          <select id="ligneType">
+            <option value="produit">Pièce / Produit</option>
+            <option value="mo">Main d'œuvre</option>
+          </select>
+          <input type="number" id="ligneQte" placeholder="Qté" min="1" value="1">
+          <input type="number" id="lignePrixHT" placeholder="Prix unit. HT (€)" step="0.01">
+          <select id="ligneTVA">
+            <option value="20">TVA 20%</option>
+            <option value="10">TVA 10%</option>
+            <option value="5.5">TVA 5.5%</option>
+            <option value="0">TVA 0%</option>
+          </select>
+          <button onclick="ajouterLigne()">➕</button>
+        </div>
+
+        <div class="table-wrapper">
+          <table id="tableauLignes">
+            <thead>
+              <tr>
+                <th>Désignation</th>
+                <th>Type</th>
+                <th>Qté</th>
+                <th>PU HT</th>
+                <th>TVA</th>
+                <th>Total HT</th>
+                <th>Total TTC</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="lignesDocument"></tbody>
+            <tfoot>
+              <tr style="background:#0f172a;font-weight:bold;">
+                <td colspan="5" style="text-align:right;padding:12px 16px;">Total HT</td>
+                <td id="totalHT" style="padding:12px 16px;">0,00 €</td>
+                <td></td><td></td>
+              </tr>
+              <tr style="background:#0f172a;font-weight:bold;">
+                <td colspan="5" style="text-align:right;padding:12px 16px;">TVA</td>
+                <td id="totalTVA" style="padding:12px 16px;">0,00 €</td>
+                <td></td><td></td>
+              </tr>
+              <tr style="background:#0f172a;font-weight:bold;font-size:16px;color:#38bdf8;">
+                <td colspan="5" style="text-align:right;padding:12px 16px;">Total TTC</td>
+                <td id="totalTTC" style="padding:12px 16px;">0,00 €</td>
+                <td></td><td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+          <button onclick="genererPdfDocument()">📄 Générer PDF</button>
+          <button onclick="sauvegarderDocument()" class="btn-success">💾 Sauvegarder</button>
+          <button onclick="ouvrirTransfertVersDossier()" style="background:#7c3aed;">📂 Transférer vers dossier</button>
+          <button onclick="resetDocument()" class="delete-btn">🗑 Effacer</button>
+
+          <!-- Panneau transfert vers dossier -->
+          <div id="panneauTransfertDoc" style="display:none;margin-top:16px;padding:18px 20px;background:#1e1040;border:1px solid #7c3aed55;border-radius:12px;">
+            <h3 style="color:#a78bfa;margin-bottom:10px;">📂 Transférer vers un dossier existant</h3>
+            <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">Le montant sera copié dans la colonne <b>Devis</b> ou <b>Facture</b> du dossier choisi.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+              <label style="color:#94a3b8;font-size:13px;font-weight:600;">Type de dossier :</label>
+              <select id="typeDossierTransfert" onchange="filtrerDossiersTransfert()" style="min-width:220px;font-size:13px;">
+                <option value="vitrage">🪟 Dossiers Vitrage</option>
+                <option value="mecanique">🔩 Dossiers Mécanique</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <input type="text" id="rechercheTransfertDossier" placeholder="🔍 Rechercher (client, N°, immat...)" oninput="filtrerDossiersTransfert()" autocomplete="off" style="flex:1;min-width:200px;">
+              <select id="selectTransfertDossier" style="flex:1;min-width:220px;font-size:13px;">
+                <option value="">-- Choisir un dossier --</option>
+              </select>
+              <button onclick="confirmerTransfertVersDossier()" style="background:#7c3aed;">✅ Confirmer</button>
+              <button onclick="document.getElementById('panneauTransfertDoc').style.display='none'">✖ Annuler</button>
+            </div>
+            <div id="infoTransfertDossier" style="margin-top:10px;font-size:13px;color:#38bdf8;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Liste documents sauvegardés -->
+      <div class="card">
+        <h2>📋 Documents enregistrés</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Titre</th>
+                <th>Dossier</th>
+                <th>Total TTC</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="listeDocuments"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- MECANIQUE -->
+    <section id="mecanique" class="page hidden">
+
+      <h2>🔩 Mécanique</h2>
+
+      <!-- ══ NOUVEAU DOSSIER ══ -->
+      <div class="card" style="margin-bottom:20px;">
+        <h2 style="margin-bottom:16px;">➕ Nouveau dossier mécanique</h2>
+
+        <!-- Ligne 1 : infos client / véhicule -->
+        <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:0;">
+          <input type="text" id="mec_client"       placeholder="👤 Client *">
+          <input type="text" id="mec_telephone"    placeholder="📞 Téléphone">
+          <input type="text" id="mec_immat"        placeholder="🚗 Immatriculation" style="text-transform:uppercase;">
+          <input type="text" id="mec_vehicule"     placeholder="Marque / Modèle">
+          <input type="text" id="mec_kilometrage"  placeholder="Kilométrage (km)">
+
+          <select id="mec_typePanne">
+            <option value="">🔧 Type d'intervention</option>
+            <option>Vidange / Filtres</option>
+            <option>Freins (plaquettes / disques)</option>
+            <option>Distribution (courroie / chaîne)</option>
+            <option>Embrayage</option>
+            <option>Amortisseurs / Suspension</option>
+            <option>Direction</option>
+            <option>Climatisation (recharge / réparation)</option>
+            <option>Batterie / Démarreur / Alternateur</option>
+            <option>Diagnostic électronique</option>
+            <option>Echappement</option>
+            <option>Boîte de vitesses</option>
+            <option>Moteur (révision / joint)</option>
+            <option>Pneus / Roues / Équilibrage</option>
+            <option>Géométrie</option>
+            <option>Carrosserie légère</option>
+            <option>Autre</option>
+          </select>
+
+          <input type="text" id="mec_descriptionPanne" placeholder="Description panne / symptômes">
+        </div>
+
+        <!-- Ligne 2 : dates, technicien, MO -->
+        <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:10px;margin-bottom:0;">
+          <div style="position:relative;">
+            <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#1e293b;padding:0 4px;z-index:1;">📅 Date entrée</label>
+            <input type="date" id="mec_dateEntree" style="width:100%;padding-top:14px;color-scheme:dark;">
+          </div>
+          <div style="position:relative;">
+            <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#1e293b;padding:0 4px;z-index:1;">📅 Date sortie prévue</label>
+            <input type="date" id="mec_dateSortie" style="width:100%;padding-top:14px;color-scheme:dark;">
+          </div>
+          <input type="text" id="mec_technicien" placeholder="👷 Technicien">
+
+          <!-- MO prédéfini -->
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="mec_tarifMO" onchange="appliquerTarifMecanique()" style="flex:1;">
+              <option value="">Main d'œuvre — tarif prédéfini</option>
+            </select>
+            <button onclick="ouvrirGestionTarifsMecanique()" title="Gérer les tarifs MO" style="background:#7c3aed;padding:10px 12px;flex-shrink:0;">⚙ Gérer tarifs MO</button>
+          </div>
+          <input type="number" id="mec_heuresMO" placeholder="Heures MO" step="0.25" min="0" oninput="appliquerTarifMecanique()">
+          <input type="number" id="mec_devis"    placeholder="Montant devis (€)" step="0.01">
+          <input type="number" id="mec_facture"  placeholder="Montant facture (€)" step="0.01">
+        </div>
+
+        <!-- Ligne 3 : statut, observation, recherche -->
+        <div class="form-grid" style="grid-template-columns:200px 1fr 1fr auto;margin-top:10px;align-items:start;">
+          <div style="position:relative;">
+            <label style="position:absolute;top:-9px;left:10px;font-size:10px;color:#64748b;background:#1e293b;padding:0 4px;z-index:1;">📋 Statut</label>
+            <select id="mec_statut" style="width:100%;">
+              <option>En attente</option>
+              <option>En cours</option>
+              <option>En attente pièces</option>
+              <option>Terminé</option>
+              <option>Facturé</option>
+            </select>
+          </div>
+          <textarea id="mec_observation" placeholder="📝 Observations / Notes technicien" rows="3"></textarea>
+          <input type="text" id="mec_recherche" placeholder="🔍 Rechercher (client, immat, N°...)" oninput="rechercherMecanique()" style="align-self:start;">
+          <select id="mec_filtreStatut" onchange="rechercherMecanique()" style="align-self:start;">
+            <option value="">Tous les statuts</option>
+            <option>En attente</option>
+            <option>En cours</option>
+            <option>En attente pièces</option>
+            <option>Terminé</option>
+            <option>Facturé</option>
+          </select>
+        </div>
+
+        <button onclick="ajouterDossierMecanique()" class="btn-success" style="margin-top:16px;">➕ Créer le dossier mécanique</button>
+      </div>
+
+      <!-- Compteurs statuts mécanique -->
+      <div class="cards" style="margin-bottom:16px;">
+        <div class="card compteur-card compteur-attente">
+          <h3>En attente</h3>
+          <span id="mecCompteurAttente">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #0891b2 !important;">
+          <h3 style="color:var(--muted);">Attente pièces</h3>
+          <span style="color:#0891b2;" id="mecCompteurPieces">0</span>
+        </div>
+        <div class="card compteur-card compteur-encours">
+          <h3>En cours</h3>
+          <span id="mecCompteurEncours">0</span>
+        </div>
+        <div class="card compteur-card compteur-termine">
+          <h3>Terminés</h3>
+          <span id="mecCompteurTermine">0</span>
+        </div>
+        <div class="card compteur-card compteur-facture">
+          <h3>Facturés</h3>
+          <span id="mecCompteurFacture">0</span>
+        </div>
+      </div>
+
+      <!-- Tableau des dossiers mécaniques -->
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Client</th>
+              <th>Véhicule / Immat</th>
+              <th>Km</th>
+              <th>Intervention</th>
+              <th>Entrée</th>
+              <th>Technicien</th>
+              <th>Devis</th>
+              <th>Facture</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeDossiersMecanique"></tbody>
+        </table>
+      </div>
+
+      <!-- Fiche dossier mécanique détaillée -->
+      <div id="detailMecanique"></div>
+
+    </section>
+
+
+    <!-- ADMINISTRATION -->
+    <section id="administration" class="page hidden">
+
+      <h2>🔑 Administration</h2>
+
+      <!-- Gestion utilisateurs -->
+      <div class="card">
+        <h2>👥 Gestion des utilisateurs</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Identifiant</th>
+                <th>Nom</th>
+                <th>Rôle</th>
+                <th>Mot de passe</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="listeUtilisateurs"></tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:20px;">➕ Ajouter un utilisateur</h3>
+        <div class="form-grid">
+          <input type="text"     id="newLogin"  placeholder="Identifiant">
+          <input type="text"     id="newNom"    placeholder="Nom affiché">
+          <input type="password" id="newPass"   placeholder="Mot de passe">
+          <select id="newRole">
+            <option value="utilisateur">👤 Utilisateur</option>
+            <option value="admin">🔑 Administrateur</option>
+          </select>
+          <button onclick="ajouterUtilisateur()">➕ Ajouter</button>
+        </div>
+      </div>
+
+      <!-- Changer son propre mot de passe -->
+      <div class="card">
+        <h2>🔒 Changer mon mot de passe</h2>
+        <div class="form-grid">
+          <input type="password" id="ancienPass"    placeholder="Ancien mot de passe">
+          <input type="password" id="nouveauPass"   placeholder="Nouveau mot de passe">
+          <input type="password" id="confirmerPass" placeholder="Confirmer le nouveau mot de passe">
+          <button onclick="changerMotDePasse()" class="btn-success">💾 Enregistrer</button>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+</div>
+</div><!-- /appContainer -->
+<script>
+document.addEventListener("click", function(e){
+  const zone = document.getElementById("resultatsRecherche");
+  const input = document.getElementById("rechercheGlobaleInput");
+  if(zone && input && !zone.contains(e.target) && e.target !== input){
+    zone.style.display = "none";
+  }
+});
+</script>
+
+<!-- MODAL GLOBAL -->
+<div id="modalOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#000a;z-index:8000;align-items:center;justify-content:center;">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:28px 32px;min-width:340px;max-width:600px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px #0009;">
+    <h2 id="modalTitre" style="margin-bottom:18px;color:#38bdf8;"></h2>
+    <div id="modalCorps"></div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="fermerModal()" style="background:#334155;">✖ Annuler</button>
+      <button id="modalBtnOk" class="btn-success">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="app-v2.js"></script>
+
+</body>
+</html>
