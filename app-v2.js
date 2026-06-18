@@ -668,6 +668,7 @@ function showPage(pageId){
   if(pageId === "agenda") { renderCalendrierRdv(); renderRendezVous(); renderCalendrierMensuel(); }
   if(pageId === "mecanique") { setTimeout(()=>{ renderDossiersMecanique(); majCompteursMecanique(); remplirTarifsMecanique(); }, 0); }
   if(pageId === "devisFacture") { setTimeout(()=>{ majNumeroDocument(); }, 100); }
+  if(pageId === "relancesAssurance") { setTimeout(()=>{ initRelancesAssurance(); }, 0); }
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById(pageId);
   if(page) page.classList.remove("hidden");
@@ -706,6 +707,7 @@ function majDashboard(){
   renderTopClients();
   renderAlertesRetard();
   majDashboardVitrageMeca();
+  if(typeof majBadgeRelances === "function") majBadgeRelances();
 }
 
 /* =====================================
@@ -4339,3 +4341,284 @@ function initTheme(){
 // Appel à l'initialisation
 document.addEventListener("DOMContentLoaded", ()=>{ initTheme(); majNumeroDocument(); });
 
+
+/* =====================================================
+   RELANCES ASSURANCE
+===================================================== */
+
+function initRelancesAssurance(){
+  // Remplir le filtre assurances
+  const sel = document.getElementById("filtreRelanceAssurance");
+  if(sel){
+    const nomsAssurances = [...new Set(dossiers.filter(d=>d.assurance).map(d=>d.assurance))].sort();
+    sel.innerHTML = '<option value="">Toutes les assurances</option>' +
+      nomsAssurances.map(a=>`<option value="${escHtml(a)}">${escHtml(a)}</option>`).join("");
+  }
+  renderRelancesAssurance();
+}
+
+function _getDossiersARelancer(){
+  return dossiers.filter(d => {
+    const pec = d.statutPriseEnCharge || "";
+    return pec === "En attente" || pec === "Partielle";
+  });
+}
+
+function _joursDepuis(dateStr){
+  if(!dateStr) return 0;
+  const d = new Date(dateStr);
+  if(isNaN(d)) return 0;
+  return Math.floor((new Date() - d) / (1000*60*60*24));
+}
+
+function renderRelancesAssurance(){
+  const filtreAss   = document.getElementById("filtreRelanceAssurance")?.value  || "";
+  const filtreStatut= document.getElementById("filtreRelanceStatut")?.value    || "";
+  const filtreDelai = parseInt(document.getElementById("filtreRelanceDelai")?.value || "0") || 0;
+
+  let liste = _getDossiersARelancer();
+  if(filtreAss)    liste = liste.filter(d=>(d.assurance||"")===filtreAss);
+  if(filtreStatut) liste = liste.filter(d=>(d.statutPriseEnCharge||"")===filtreStatut);
+  if(filtreDelai)  liste = liste.filter(d=>_joursDepuis(d.dateCreation||d.dateSinistre)>=filtreDelai);
+
+  // Trier par délai décroissant (les plus anciens en premier)
+  liste.sort((a,b)=>_joursDepuis(b.dateCreation||b.dateSinistre)-_joursDepuis(a.dateCreation||a.dateSinistre));
+
+  // Compteurs
+  const aRelancer = _getDossiersARelancer();
+  let att=0, part=0, urgent=0, montantTotal=0;
+  aRelancer.forEach(d=>{
+    if(d.statutPriseEnCharge==="En attente") att++;
+    if(d.statutPriseEnCharge==="Partielle")  part++;
+    if(_joursDepuis(d.dateCreation||d.dateSinistre)>=30) urgent++;
+    const montant = Number(d.facture||d.devis||0);
+    const rembourse = Number(d.montantRembourse||0);
+    montantTotal += Math.max(0, montant-rembourse);
+  });
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set("relCompteurAttente",  att);
+  set("relCompteurPartielle",part);
+  set("relCompteurUrgent",   urgent);
+  set("relMontantTotal",     montantTotal.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €");
+
+  // Badge menu
+  const badge = document.getElementById("badgeRelances");
+  if(badge){ badge.textContent = aRelancer.length > 0 ? aRelancer.length : ""; }
+
+  // Tableau
+  const tbody = document.getElementById("listeRelancesAssurance");
+  if(!tbody) return;
+
+  if(!liste.length){
+    tbody.innerHTML=`<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:24px;">✅ Aucune relance en attente avec ces filtres</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = liste.map(d=>{
+    const idx = dossiers.indexOf(d);
+    const jours = _joursDepuis(d.dateCreation||d.dateSinistre);
+    const montant   = Number(d.facture||d.devis||0);
+    const rembourse = Number(d.montantRembourse||0);
+    const resteDu   = Math.max(0, montant-rembourse);
+    const urgence   = jours>=30 ? "color:#f87171;font-weight:bold;" : jours>=15 ? "color:#fbbf24;" : "color:#94a3b8;";
+    const pecBadge  = d.statutPriseEnCharge==="En attente"
+      ? `<span class="badge" style="background:#78350f;color:#fbbf24;">⏳ En attente</span>`
+      : `<span class="badge" style="background:#1e3a5f;color:#60a5fa;">⚠️ Partielle</span>`;
+
+    const derniereRelance = d.derniereRelance
+      ? new Date(d.derniereRelance).toLocaleDateString("fr-FR")
+      : `<span style="color:#475569;">—</span>`;
+
+    return `<tr>
+      <td><b>${escHtml(d.numero)}</b></td>
+      <td>${escHtml(d.client)}</td>
+      <td>
+        <div style="font-weight:bold;font-size:13px;">${escHtml(d.vehicule||"—")} ${escHtml(d.modele||"")}</div>
+        <div style="color:var(--muted);font-size:12px;">${escHtml(d.immat||"—")}</div>
+      </td>
+      <td><b>${escHtml(d.assurance||"—")}</b></td>
+      <td>${pecBadge}</td>
+      <td>${montant ? montant.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—"}</td>
+      <td style="color:#4ade80;">${rembourse ? rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—"}</td>
+      <td style="color:#f87171;font-weight:bold;">${resteDu ? resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—"}</td>
+      <td>${escHtml(d.dateCreation||"—")}</td>
+      <td style="${urgence}">${jours} jour${jours>1?"s":""}</td>
+      <td style="font-size:12px;">${derniereRelance}</td>
+      <td style="white-space:nowrap;">
+        <button onclick="ouvrirRelanceEmail(${idx})" style="background:#2563eb;padding:6px 10px;font-size:12px;">✉️ Relancer</button>
+        <button onclick="marquerRelanceEffectuee(${idx})" style="background:#16a34a;padding:6px 10px;font-size:12px;">✅ Marqué</button>
+        <button onclick="ouvrirDossier(${idx})" style="background:#334155;padding:6px 10px;font-size:12px;">📁 Dossier</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+/* ── Ouvrir modal de relance email/téléphone ── */
+function ouvrirRelanceEmail(index){
+  const d = dossiers[index];
+  if(!d) return;
+  const ent = entreprise || {};
+  const montant   = Number(d.facture||d.devis||0);
+  const rembourse = Number(d.montantRembourse||0);
+  const resteDu   = Math.max(0, montant-rembourse);
+  const jours     = _joursDepuis(d.dateCreation||d.dateSinistre);
+  const dateAuj   = new Date().toLocaleDateString("fr-FR");
+
+  const assuranceInfo = trouverAssurance(d.assurance||"") || {};
+  const telAssurance  = assuranceInfo.telephone || d.telephoneAssurance || "";
+  const emailAssuranceContact = assuranceInfo.email || d.emailAssurance || "";
+
+  const msgDefaut = `Objet : Relance prise en charge — Dossier N°${d.numero}
+
+Madame, Monsieur,
+
+Nous nous permettons de vous relancer concernant le dossier N°${d.numero} ouvert le ${d.dateCreation||"—"} pour :
+- Client : ${d.client}
+- Véhicule : ${d.vehicule||"—"} ${d.immat?"("+d.immat+")":""}
+- Type de dommage : ${d.vitrage||d.typeDommage||"—"}
+- Numéro de sinistre : ${d.sinistre||"—"}
+- Montant : ${montant.toLocaleString("fr-FR",{minimumFractionDigits:2})} €${rembourse?"\n- Déjà remboursé : "+rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €\n- Reste dû : "+resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":""}
+
+Sans réponse de votre part dans les 8 jours, nous nous verrons dans l'obligation de facturer directement notre client.
+
+Cordialement,
+${ent.nom||"Opr"}
+${ent.telephone||""}`;
+
+  ouvrirModal(`✉️ Relance assurance — Dossier ${d.numero}`, `
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="card" style="flex:1;min-width:200px;padding:12px;background:#0f172a;">
+          <p style="font-size:12px;color:var(--muted);">🏢 Assurance</p>
+          <p style="font-weight:bold;">${escHtml(d.assurance||"—")}</p>
+          ${telAssurance?`<p style="font-size:12px;">📞 ${escHtml(telAssurance)}</p>`:""}
+          ${emailAssuranceContact?`<p style="font-size:12px;">📧 ${escHtml(emailAssuranceContact)}</p>`:""}
+        </div>
+        <div class="card" style="flex:1;min-width:200px;padding:12px;background:#0f172a;">
+          <p style="font-size:12px;color:var(--muted);">📁 Dossier</p>
+          <p style="font-weight:bold;">${escHtml(d.client)} — N°${escHtml(d.numero)}</p>
+          <p style="font-size:12px;color:#f87171;">⏱ ${jours} jours sans réponse</p>
+          ${resteDu?`<p style="font-size:12px;color:#4ade80;">💶 Reste dû : ${resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</p>`:""}
+        </div>
+      </div>
+
+      <div>
+        <label style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">📧 Email assurance</label>
+        <input type="email" id="rel_email" value="${escHtml(emailAssuranceContact)}" placeholder="email@assurance.fr" style="width:100%;">
+      </div>
+
+      <div>
+        <label style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">💬 Message</label>
+        <textarea id="rel_message" rows="12" style="width:100%;font-size:12px;font-family:monospace;resize:vertical;">${msgDefaut}</textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${telAssurance?`<button onclick="window.open('tel:${escHtml(telAssurance)}')" style="background:#0891b2;">📞 Appeler ${escHtml(telAssurance)}</button>`:""}
+        <button onclick="copierMessageRelance()" style="background:#334155;">📋 Copier le message</button>
+      </div>
+    </div>`,
+    function(){
+      const email   = document.getElementById("rel_email")?.value.trim();
+      const message = document.getElementById("rel_message")?.value.trim();
+      if(!message){ toast("Message vide","error"); return false; }
+
+      // Ouvrir client mail avec le message
+      if(email){
+        const sujet = encodeURIComponent(`Relance prise en charge — Dossier N°${d.numero}`);
+        const corps = encodeURIComponent(message);
+        window.open(`mailto:${email}?subject=${sujet}&body=${corps}`);
+      }
+
+      // Enregistrer la relance
+      marquerRelanceEffectuee(index);
+      enregistrerHistoriqueRelance(index, message);
+    }
+  );
+  setTimeout(()=>{
+    const btn = document.getElementById("modalBtnOk");
+    if(btn){ btn.textContent = "✉️ Envoyer la relance"; btn.style.background = "#2563eb"; }
+  }, 50);
+}
+
+function copierMessageRelance(){
+  const msg = document.getElementById("rel_message")?.value;
+  if(!msg) return;
+  navigator.clipboard.writeText(msg).then(()=>toast("Message copié ✓")).catch(()=>toast("Copiez manuellement","error"));
+}
+
+/* ── Marquer une relance comme effectuée ── */
+function marquerRelanceEffectuee(index){
+  if(!dossiers[index]) return;
+  dossiers[index].derniereRelance = new Date().toISOString();
+  dossiers[index].nbRelances = (dossiers[index].nbRelances||0) + 1;
+  saveData();
+  renderRelancesAssurance();
+  toast("Relance enregistrée ✓");
+}
+
+/* ── Enregistrer l'historique ── */
+function enregistrerHistoriqueRelance(index, message){
+  const d = dossiers[index];
+  if(!d.historiqueRelances) d.historiqueRelances = [];
+  d.historiqueRelances.push({
+    date: new Date().toISOString(),
+    message: message.substring(0, 200)+"..."
+  });
+  saveData();
+}
+
+/* ── Relancer tout d'un coup ── */
+function toutMarquerRelance(){
+  const liste = _getDossiersARelancer();
+  if(!liste.length){ toast("Aucune relance à effectuer","error"); return; }
+  confirmerAction(`Marquer ${liste.length} dossier${liste.length>1?"s":""} comme relancé${liste.length>1?"s":""}  aujourd'hui ?`, ()=>{
+    liste.forEach(d=>{
+      d.derniereRelance = new Date().toISOString();
+      d.nbRelances = (d.nbRelances||0)+1;
+    });
+    saveData();
+    renderRelancesAssurance();
+    toast(`${liste.length} relance${liste.length>1?"s":""} enregistrée${liste.length>1?"s":""} ✓`);
+  });
+}
+
+/* ── Export CSV des relances ── */
+function exporterRelancesCSV(){
+  const liste = _getDossiersARelancer();
+  const sep = ";";
+  const bom = "\uFEFF";
+  const lignes = [
+    ["N°","Client","Véhicule","Immat","Assurance","N° sinistre","PEC","Montant","Remboursé","Reste dû","Date dossier","Délai (jours)","Dernière relance","Nb relances"].join(sep),
+    ...liste.map(d=>{
+      const montant   = Number(d.facture||d.devis||0);
+      const rembourse = Number(d.montantRembourse||0);
+      return [
+        d.numero, d.client, (d.vehicule||"")+" "+(d.modele||""), d.immat||"",
+        d.assurance||"", d.sinistre||"",
+        d.statutPriseEnCharge||"",
+        montant.toFixed(2), rembourse.toFixed(2), Math.max(0,montant-rembourse).toFixed(2),
+        d.dateCreation||"",
+        _joursDepuis(d.dateCreation||d.dateSinistre),
+        d.derniereRelance ? new Date(d.derniereRelance).toLocaleDateString("fr-FR") : "",
+        d.nbRelances||0
+      ].map(v=>'"'+String(v||"").replace(/"/g,'""')+'"').join(sep);
+    })
+  ];
+  const csv = bom + lignes.join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = "relances-assurance-" + new Date().toISOString().split("T")[0] + ".csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  toast("Export CSV téléchargé ✓");
+}
+
+/* ── Rafraîchir le badge relances au chargement ── */
+function majBadgeRelances(){
+  const nb = _getDossiersARelancer().length;
+  const badge = document.getElementById("badgeRelances");
+  if(badge) badge.textContent = nb > 0 ? nb : "";
+}

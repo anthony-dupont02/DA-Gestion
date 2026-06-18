@@ -39,6 +39,7 @@
       <div class="nav-section-label">🪟 VITRAGE</div>
       <a href="#" onclick="showPage('dossiers');setActive(this)">📁 Dossiers vitrage</a>
       <a href="#" onclick="showPage('assurances');setActive(this)">🛡 Assurances</a>
+      <a href="#" onclick="showPage('relancesAssurance');setActive(this)">📨 Relances assurance <span id="badgeRelances" style="background:#dc2626;color:#fff;border-radius:9999px;padding:1px 7px;font-size:11px;margin-left:4px;font-weight:bold;"></span></a>
 
       <div class="nav-section-label">🔩 MÉCANIQUE</div>
       <a href="#" onclick="showPage('mecanique');setActive(this)">🔩 Dossiers mécanique</a>
@@ -925,6 +926,79 @@
 
     </section>
 
+
+    <!-- RELANCES ASSURANCE -->
+    <section id="relancesAssurance" class="page hidden">
+
+      <h2>📨 Relances assurance</h2>
+
+      <!-- Filtres -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px;">
+        <select id="filtreRelanceAssurance" onchange="renderRelancesAssurance()" style="min-width:200px;">
+          <option value="">Toutes les assurances</option>
+        </select>
+        <select id="filtreRelanceStatut" onchange="renderRelancesAssurance()" style="min-width:180px;">
+          <option value="">Tous les statuts PEC</option>
+          <option value="En attente">⏳ En attente</option>
+          <option value="Partielle">⚠️ Partielle</option>
+        </select>
+        <select id="filtreRelanceDelai" onchange="renderRelancesAssurance()" style="min-width:180px;">
+          <option value="">Tous les délais</option>
+          <option value="7">+ de 7 jours</option>
+          <option value="15">+ de 15 jours</option>
+          <option value="30">+ de 30 jours</option>
+        </select>
+        <button onclick="toutMarquerRelance()" style="background:#7c3aed;">✉️ Relancer tout</button>
+        <button onclick="exporterRelancesCSV()" style="background:#0891b2;">📊 Export CSV</button>
+      </div>
+
+      <!-- Compteurs -->
+      <div class="cards" style="margin-bottom:20px;">
+        <div class="card compteur-card" style="border-top:3px solid #f59e0b;">
+          <h3>⏳ En attente</h3>
+          <span style="color:#f59e0b;" id="relCompteurAttente">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #2563eb;">
+          <h3>⚠️ Partielles</h3>
+          <span style="color:#2563eb;" id="relCompteurPartielle">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #dc2626;">
+          <h3>🔴 Relance urgente (+30j)</h3>
+          <span style="color:#dc2626;" id="relCompteurUrgent">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #16a34a;">
+          <h3>💶 Montant en attente</h3>
+          <span style="color:#16a34a;font-size:22px;" id="relMontantTotal">0 €</span>
+        </div>
+      </div>
+
+      <!-- Tableau relances -->
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Client</th>
+              <th>Véhicule / Immat</th>
+              <th>Assurance</th>
+              <th>PEC</th>
+              <th>Montant dossier</th>
+              <th>Remboursé</th>
+              <th>Reste dû</th>
+              <th>Date dossier</th>
+              <th>Délai</th>
+              <th>Dernière relance</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeRelancesAssurance"></tbody>
+        </table>
+      </div>
+
+      <!-- Historique relances -->
+      <div id="historiqueRelances" style="margin-top:24px;"></div>
+
+    </section>
 
     <!-- ADMINISTRATION -->
     <section id="administration" class="page hidden">
