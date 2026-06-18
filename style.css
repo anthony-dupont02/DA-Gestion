@@ -857,3 +857,53 @@ body.theme-light .hero h1 { -webkit-text-fill-color: #1e40af; }
 body.theme-light .table-wrapper { border-color: #e2e8f0; }
 body.theme-light ::-webkit-scrollbar-track { background: #f1f5f9; }
 body.theme-light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+
+/* =====================================
+   MOBILE — MENU HAMBURGER
+===================================== */
+
+@media(max-width:768px){
+  #btnMenuMobile { display:flex !important; }
+
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    bottom: 0;
+    z-index: 10000;
+    transition: left .3s ease;
+    width: 240px;
+  }
+
+  .sidebar.mobile-open {
+    left: 0;
+    box-shadow: 4px 0 20px rgba(0,0,0,.6);
+  }
+
+  .content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 16px !important;
+    padding-top: 56px !important;
+  }
+
+  .cards {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  table { font-size: 11px; }
+  th, td { padding: 6px 8px; }
+
+  .hero h1 { font-size: 22px; }
+  .hero p  { font-size: 13px; }
+
+  td button { padding: 4px 7px; font-size: 11px; margin: 1px; }
+}
+
+@media(max-width:480px){
+  .cards { grid-template-columns: 1fr !important; }
+}

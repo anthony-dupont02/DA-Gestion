@@ -1358,9 +1358,11 @@ function ajouterDossier(){
   const montantRembourse    = g("montantRembourse");
   const statutPriseEnCharge = g("statutPriseEnCharge");
 
+  const emailClient = g("emailClient");
+
   let dossier = {
     numero, client, adresse, vehicule, modele, immat, sinistre,
-    telephone, contrat, kilometrage, dateSinistre, lieuSinistre,
+    telephone, emailClient, contrat, kilometrage, dateSinistre, lieuSinistre,
     franchise, montantFranchise, adresseAssurance, agenceAssurance,
     telephoneAssurance, emailAssurance, signatureClient,
     vitrage, typeDommage, devis, facture, assurance, statut, observation,
@@ -1410,7 +1412,7 @@ function resetFormDossier(){
     "telephoneDossier","adresseDossier","contratDossier","kilometrageDossier",
     "dateSinistre","lieuSinistre","signatureClient","technicien","dateReparation",
     "typeDommage","adresseAssurance","agenceAssurance","telephoneAssurance","emailAssurance",
-    "montantRembourse","statutPriseEnCharge"];
+    "montantRembourse","statutPriseEnCharge","emailClient"];
   ids.forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = "";
@@ -3399,7 +3401,7 @@ function ajouterDossierMecanique(){
   majCompteursMecanique();
 
   // Réinitialiser le formulaire
-  ["mec_client","mec_telephone","mec_immat","mec_vehicule","mec_kilometrage",
+  ["mec_client","mec_telephone","mec_immat","mec_vehicule","mec_kilometrage","mec_kilometrageSortie",
    "mec_typePanne","mec_descriptionPanne","mec_dateEntree","mec_dateSortie",
    "mec_technicien","mec_devis","mec_facture","mec_observation","mec_heuresMO"].forEach(id=>{
     const el = document.getElementById(id); if(el) el.value="";
@@ -5273,5 +5275,312 @@ async function seConnecterAvecGoogle(){
 /* initModeHorsLigne appelé au DOMContentLoaded principal ci-dessus */
 document.addEventListener("DOMContentLoaded", ()=>{
   initModeHorsLigne();
+});
+
+
+/* =====================================================
+   NOUVELLES FONCTIONNALITÉS — PACK COMPLET
+===================================================== */
+
+/* ─── MENU HAMBURGER MOBILE ─── */
+function toggleMenuMobile(){
+  const sidebar = document.getElementById("sidebarMain");
+  const btn = document.getElementById("btnMenuMobile");
+  if(!sidebar) return;
+  const isOpen = sidebar.classList.contains("mobile-open");
+  sidebar.classList.toggle("mobile-open", !isOpen);
+  if(btn) btn.textContent = isOpen ? "☰" : "✕";
+}
+
+/* ─── NOTIFICATION STATUT TERMINÉ ─── */
+function verifierNotifStatut(){
+  const statut = document.getElementById("statutDossier")?.value;
+  const client = document.getElementById("clientDossier")?.value.trim();
+  const email  = document.getElementById("emailClient")?.value.trim();
+  const tel    = document.getElementById("telephoneDossier")?.value.trim();
+  if(statut !== "Terminé") return;
+  if(!email && !tel) return;
+  // Proposer d'envoyer une notification
+  if(email){
+    confirmerAction(`Envoyer un email de notification à ${client} (${email}) pour l'informer que son véhicule est prêt ?`, ()=>{
+      const ent = entreprise || {};
+      const sujet = encodeURIComponent(`Votre véhicule est prêt — ${ent.nom||"DA-Gestion"}`);
+      const corps = encodeURIComponent(`Bonjour ${client},\n\nNous avons le plaisir de vous informer que votre véhicule est prêt et disponible à la récupération.\n\nN'hésitez pas à nous contacter pour tout renseignement.\n\nCordialement,\n${ent.nom||"DA-Gestion"}\n${ent.telephone||""}`);
+      window.open(`mailto:${email}?subject=${sujet}&body=${corps}`);
+      toast("Email de notification ouvert ✓");
+    });
+  }
+}
+
+/* ─── RAPPORT MENSUEL PDF ─── */
+function genererRapportMensuel(){
+  const mecs = typeof dossiersMecanique !== "undefined" ? dossiersMecanique : [];
+  const ent  = entreprise || {};
+  const maintenant = new Date();
+  const moisLabel  = maintenant.toLocaleDateString("fr-FR",{month:"long",year:"numeric"});
+  const moisNum    = maintenant.getMonth();
+  const anneeNum   = maintenant.getFullYear();
+
+  const filtreMois = d => {
+    const dt = new Date(d.dateCreation||d.createdAt||d.date||"");
+    return dt.getMonth()===moisNum && dt.getFullYear()===anneeNum;
+  };
+
+  const dossMois = dossiers.filter(filtreMois);
+  const mecsMois = mecs.filter(filtreMois);
+
+  const caVit  = dossMois.reduce((a,d)=>a+Number(d.facture||0),0);
+  const caMec  = mecsMois.reduce((a,d)=>a+Number(d.facture||d.devis||0),0);
+  const caTotal = caVit + caMec;
+
+  // Top 5 clients du mois
+  const compteur = {};
+  [...dossMois,...mecsMois].forEach(d=>{
+    const k=(d.client||"").trim();
+    if(!k) return;
+    if(!compteur[k]) compteur[k]={nb:0,ca:0};
+    compteur[k].nb++;
+    compteur[k].ca+=Number(d.facture||d.devis||0);
+  });
+  const top5 = Object.entries(compteur).sort((a,b)=>b[1].ca-a[1].ca).slice(0,5);
+
+  // Stats par statut vitrage
+  const statsVit = {};
+  dossMois.forEach(d=>{ statsVit[d.statut]=(statsVit[d.statut]||0)+1; });
+  const statsMec = {};
+  mecsMois.forEach(d=>{ statsMec[d.statut]=(statsMec[d.statut]||0)+1; });
+
+  const f = window.open("","_blank","width=900,height=1100");
+  f.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Rapport mensuel — ${moisLabel}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:32px;max-width:780px;margin:0 auto;}
+    .entete{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #1a3a6a;}
+    h1{font-size:20px;color:#1a3a6a;}
+    h2{font-size:14px;color:#1a3a6a;margin:20px 0 8px;}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+    .kpi{background:#f0f4ff;border-radius:8px;padding:12px;text-align:center;}
+    .kpi-val{font-size:22px;font-weight:bold;color:#1a3a6a;}
+    .kpi-lbl{font-size:10px;color:#666;text-transform:uppercase;margin-top:2px;}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:11px;}
+    thead tr{background:#1a3a6a;color:#fff;}
+    th{padding:7px 10px;text-align:left;}
+    td{padding:6px 10px;border-bottom:1px solid #e2e8f0;}
+    .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+    .bar{height:14px;background:#1a3a6a;border-radius:4px;min-width:4px;}
+    .bar-label{font-size:11px;min-width:140px;}
+    .bar-val{font-size:11px;color:#666;}
+    @media print{body{padding:12px;}}
+  </style></head><body>
+  <div class="entete">
+    <div>
+      <h1>📊 Rapport mensuel</h1>
+      <div style="font-size:13px;color:#555;margin-top:4px;">${moisLabel.charAt(0).toUpperCase()+moisLabel.slice(1)}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-weight:bold;">${escHtml(ent.nom||"DA-Gestion")}</div>
+      <div style="font-size:11px;color:#666;">${escHtml(ent.adresse||"")}</div>
+      <div style="font-size:11px;color:#666;">Généré le ${new Date().toLocaleDateString("fr-FR")}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-val">${dossMois.length}</div><div class="kpi-lbl">Dossiers vitrage</div></div>
+    <div class="kpi"><div class="kpi-val">${mecsMois.length}</div><div class="kpi-lbl">Dossiers mécanique</div></div>
+    <div class="kpi"><div class="kpi-val">${caTotal.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</div><div class="kpi-lbl">CA total</div></div>
+    <div class="kpi"><div class="kpi-val">${(dossMois.length+mecsMois.length?caTotal/(dossMois.length+mecsMois.length):0).toLocaleString("fr-FR",{maximumFractionDigits:0})} €</div><div class="kpi-lbl">Panier moyen</div></div>
+  </div>
+
+  <div style="display:flex;gap:20px;margin-bottom:20px;">
+    <div style="flex:1;background:#eff6ff;border-radius:8px;padding:14px;">
+      <div style="font-size:13px;font-weight:bold;color:#1a3a6a;margin-bottom:8px;">🪟 Vitrage</div>
+      <div style="font-size:20px;font-weight:bold;">${caVit.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</div>
+      ${Object.entries(statsVit).map(([s,n])=>`<div style="font-size:11px;color:#555;margin-top:4px;">${s} : ${n}</div>`).join("")}
+    </div>
+    <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:14px;">
+      <div style="font-size:13px;font-weight:bold;color:#166534;margin-bottom:8px;">🔩 Mécanique</div>
+      <div style="font-size:20px;font-weight:bold;">${caMec.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</div>
+      ${Object.entries(statsMec).map(([s,n])=>`<div style="font-size:11px;color:#555;margin-top:4px;">${s} : ${n}</div>`).join("")}
+    </div>
+  </div>
+
+  <h2>🏆 Top clients du mois</h2>
+  <table>
+    <thead><tr><th>Client</th><th>Dossiers</th><th>CA</th></tr></thead>
+    <tbody>${top5.map(([nom,s])=>`<tr><td>${escHtml(nom)}</td><td>${s.nb}</td><td><b>${s.ca.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></td></tr>`).join("")||'<tr><td colspan="3" style="color:#999;text-align:center;">Aucun client ce mois</td></tr>'}</tbody>
+  </table>
+
+  <h2>📁 Dossiers vitrage du mois</h2>
+  <table>
+    <thead><tr><th>N°</th><th>Client</th><th>Véhicule</th><th>Vitrage</th><th>Assurance</th><th>Montant</th><th>Statut</th></tr></thead>
+    <tbody>${dossMois.map(d=>`<tr><td>${escHtml(d.numero)}</td><td>${escHtml(d.client)}</td><td>${escHtml(d.vehicule||"")} ${escHtml(d.immat||"")}</td><td>${escHtml(d.vitrage||"—")}</td><td>${escHtml(d.assurance||"—")}</td><td>${d.facture?Number(d.facture).toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}</td><td>${escHtml(d.statut)}</td></tr>`).join("")||'<tr><td colspan="7" style="color:#999;text-align:center;">Aucun dossier</td></tr>'}</tbody>
+  </table>
+
+  <h2>🔩 Dossiers mécanique du mois</h2>
+  <table>
+    <thead><tr><th>N°</th><th>Client</th><th>Véhicule</th><th>Intervention</th><th>Technicien</th><th>Montant</th><th>Statut</th></tr></thead>
+    <tbody>${mecsMois.map(d=>`<tr><td>${escHtml(d.numero)}</td><td>${escHtml(d.client)}</td><td>${escHtml(d.vehicule||"")} ${escHtml(d.immat||"")}</td><td>${escHtml(d.typePanne||"—")}</td><td>${escHtml(d.technicien||"—")}</td><td>${d.facture?Number(d.facture).toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":d.devis?Number(d.devis).toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}</td><td>${escHtml(d.statut)}</td></tr>`).join("")||'<tr><td colspan="7" style="color:#999;text-align:center;">Aucun dossier</td></tr>'}</tbody>
+  </table>
+
+  </body></html>`);
+  f.document.close();
+  setTimeout(()=>f.print(), 400);
+}
+
+/* ─── EXPIRATION SESSION ─── */
+let _sessionTimer = null;
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+function resetSessionTimer(){
+  if(_sessionTimer) clearTimeout(_sessionTimer);
+  _sessionTimer = setTimeout(()=>{
+    const session = getSessionUtilisateur();
+    if(session){
+      toast("⏰ Session expirée — veuillez vous reconnecter","error");
+      setTimeout(()=>{
+        sessionStorage.removeItem("session_user");
+        location.reload();
+      }, 2000);
+    }
+  }, SESSION_TIMEOUT);
+}
+
+// Réinitialiser le timer à chaque interaction
+document.addEventListener("click",     ()=>resetSessionTimer(), true);
+document.addEventListener("keydown",   ()=>resetSessionTimer(), true);
+document.addEventListener("mousemove", ()=>resetSessionTimer(), true);
+
+/* ─── ARCHIVAGE DOSSIERS ─── */
+function archiverAnciensDossiers(){
+  const limite = new Date();
+  limite.setFullYear(limite.getFullYear() - 1);
+  const aArchiver = dossiers.filter(d=>{
+    if(d.statut !== "Facturé") return false;
+    const dt = new Date(d.dateCreation||"");
+    return dt < limite;
+  });
+  if(!aArchiver.length){ toast("Aucun dossier à archiver (facturés de plus d'1 an)"); return; }
+  confirmerAction(`Archiver ${aArchiver.length} dossier${aArchiver.length>1?"s":""} facturés de plus d'un an ? Ils seront masqués mais conservés.`, ()=>{
+    aArchiver.forEach(d=>{ d.archive = true; });
+    saveData();
+    renderDossiers();
+    majDashboard();
+    toast(`${aArchiver.length} dossier${aArchiver.length>1?"s":""} archivé${aArchiver.length>1?"s":""} ✓`);
+  });
+}
+
+function toggleArchives(){
+  const btn = document.getElementById("btnToggleArchives");
+  const show = btn?.dataset.show !== "true";
+  if(btn){ btn.dataset.show = show; btn.textContent = show ? "🗃 Masquer les archives" : "🗃 Afficher les archives"; }
+  window._afficherArchives = show;
+  renderDossiers();
+}
+
+/* ─── ASSOCIER EMAIL GOOGLE AUX UTILISATEURS ─── */
+function associerEmailGoogle(indexUser){
+  const users = getUtilisateurs();
+  const u = users[indexUser];
+  if(!u) return;
+  ouvrirModal(`🔗 Associer Google — ${u.nom}`, `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <p style="font-size:13px;color:var(--muted);">Saisissez l'adresse Gmail de cet utilisateur. Il pourra alors se connecter avec Google sans mot de passe.</p>
+      <input type="email" id="gg_email" value="${escHtml(u.googleEmail||"")}" placeholder="utilisateur@gmail.com" style="width:100%;">
+    </div>`,
+    function(){
+      const email = document.getElementById("gg_email")?.value.trim();
+      users[indexUser].googleEmail = email;
+      saveUtilisateurs(users);
+      renderAdministration();
+      toast(email ? `Email Google associé : ${email} ✓` : "Association supprimée");
+    }
+  );
+  setTimeout(()=>{const btn=document.getElementById("modalBtnOk");if(btn){btn.textContent="🔗 Associer";}},50);
+}
+
+/* ─── ACOMPTE SUR DEVIS ─── */
+function ajouterLigneAcompte(){
+  const total = lignesDocument.reduce((a,l)=>{ const ht=l.qte*l.prixHT; return a+ht+ht*(l.tva/100); }, 0);
+  if(total <= 0){ toast("Ajoutez d'abord des lignes au document","error"); return; }
+  ouvrirModal("💰 Ajouter un acompte", `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <p style="font-size:13px;color:var(--muted);">Total document : <b>${total.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button onclick="document.getElementById('ac_pct').value=25;calcAcompte(${total})" style="background:#334155;padding:6px 12px;font-size:12px;">25%</button>
+        <button onclick="document.getElementById('ac_pct').value=30;calcAcompte(${total})" style="background:#334155;padding:6px 12px;font-size:12px;">30%</button>
+        <button onclick="document.getElementById('ac_pct').value=50;calcAcompte(${total})" style="background:#334155;padding:6px 12px;font-size:12px;">50%</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input type="number" id="ac_pct" placeholder="%" min="1" max="100" oninput="calcAcompte(${total})" style="width:80px;"> %
+        <span style="color:var(--muted);">→</span>
+        <input type="number" id="ac_montant" placeholder="Montant €" step="0.01" style="flex:1;">
+      </div>
+    </div>`,
+    function(){
+      const montant = parseFloat(document.getElementById("ac_montant")?.value||"0");
+      if(!montant || montant<=0){ toast("Montant invalide","error"); return false; }
+      // Ajouter ligne acompte (montant négatif = déduction)
+      lignesDocument.push({ design:"Acompte versé", qte:1, prixHT:-montant, tva:0, type:"acompte" });
+      renderLignes();
+      toast(`Acompte de ${montant.toLocaleString("fr-FR",{minimumFractionDigits:2})} € ajouté ✓`);
+    }
+  );
+  setTimeout(()=>{const btn=document.getElementById("modalBtnOk");if(btn)btn.textContent="✅ Ajouter l'acompte";},50);
+}
+
+function calcAcompte(total){
+  const pct = parseFloat(document.getElementById("ac_pct")?.value||"0");
+  const el  = document.getElementById("ac_montant");
+  if(el && pct>0) el.value = (total*pct/100).toFixed(2);
+}
+
+/* ─── AVOIR / NOTE DE CRÉDIT ─── */
+function creerAvoir(indexDoc){
+  const doc = documents[indexDoc];
+  if(!doc){ toast("Document introuvable","error"); return; }
+  confirmerAction(`Créer un avoir (note de crédit) pour ${doc.id} — ${doc.totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})} € ?`, ()=>{
+    const avoir = {
+      id: "AV-"+doc.id,
+      type: "avoir",
+      titre: "Avoir sur "+doc.id,
+      date: new Date().toISOString().split("T")[0],
+      dossierIdx: doc.dossierIdx,
+      dossierNumero: doc.dossierNumero,
+      lignes: doc.lignes.map(l=>({...l, prixHT:-Math.abs(l.prixHT)})),
+      totalHT:  -doc.totalHT,
+      totalTVA: -doc.totalTVA,
+      totalTTC: -doc.totalTTC,
+      refDoc: doc.id
+    };
+    documents.push(avoir);
+    localStorage.setItem("documents", JSON.stringify(documents));
+    renderDocuments();
+    toast("Avoir créé : "+avoir.id+" ✓");
+  });
+}
+
+/* ─── RAPPORT MENSUEL dans le menu ─── */
+/* Appeler depuis sidebar */
+
+/* ─── INJECTER RAPPORT + ARCHIVAGE + ACOMPTE DANS L'INTERFACE ─── */
+document.addEventListener("DOMContentLoaded", ()=>{
+  resetSessionTimer();
+
+  // Ajouter bouton rapport mensuel dans le menu outils
+  const nav = document.querySelector(".sidebar nav");
+  if(nav){
+    const lien = document.createElement("a");
+    lien.href = "#";
+    lien.onclick = ()=>{ genererRapportMensuel(); return false; };
+    lien.textContent = "📄 Rapport mensuel";
+    nav.appendChild(lien);
+
+    const lienArch = document.createElement("a");
+    lienArch.href = "#";
+    lienArch.onclick = ()=>{ archiverAnciensDossiers(); return false; };
+    lienArch.textContent = "🗃 Archiver (1 an+)";
+    nav.appendChild(lienArch);
+  }
 });
 
