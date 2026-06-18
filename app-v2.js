@@ -73,7 +73,7 @@ function afficherEcranLogin(){
     <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:40px 36px;width:340px;box-shadow:0 8px 32px #0008;">
       <div style="text-align:center;margin-bottom:28px;">
         <div style="font-size:36px;">🚗</div>
-        <h2 style="color:#38bdf8;margin:8px 0 4px;">Opr</h2>
+        <h2 style="color:#38bdf8;margin:8px 0 4px;">DA-Gestion</h2>
         <p style="color:#64748b;font-size:13px;">Connectez-vous pour accéder à l'application</p>
       </div>
       <div style="display:flex;flex-direction:column;gap:14px;">
@@ -114,7 +114,7 @@ function afficherUtilisateurConnecte(user){
   const footer = document.querySelector(".sidebar-footer");
   if(!footer) return;
   footer.innerHTML = `
-    <div class="version-info">Opr v2</div>
+    <div class="version-info">DA-Gestion v2</div>
     <div style="margin-top:10px;padding:10px;background:#0f172a;border-radius:8px;border:1px solid #1e293b;">
       <div style="font-size:12px;color:#94a3b8;">Connecté en tant que</div>
       <div style="font-weight:bold;color:#38bdf8;font-size:14px;">${escHtml(user.nom)}</div>
@@ -1994,7 +1994,7 @@ Observations :
 ${d.observation||""}
 
 Cordialement,
-${entreprise.nom||"Opr"}`;
+${entreprise.nom||"DA-Gestion"}`;
 
   // Ouvrir Gmail directement avec le mail pré-rempli
   const gmailUrl = "https://mail.google.com/mail/?view=cm&fs=1"
@@ -2203,14 +2203,14 @@ function ouvrirGoogleAgenda(index){
 
   const debut = formatGoogleAgendaDate(rdv.date, rdv.heure, 0);
   const fin   = formatGoogleAgendaDate(rdv.date, rdv.heure, 1);
-  const titre = `Opr - ${rdv.client || "Rendez-vous"}${rdv.vehicule ? " - " + rdv.vehicule : ""}`;
+  const titre = `DA-Gestion - ${rdv.client || "Rendez-vous"}${rdv.vehicule ? " - " + rdv.vehicule : ""}`;
   const details = [
     rdv.client ? `Client : ${rdv.client}` : "",
     rdv.vehicule ? `Véhicule : ${rdv.vehicule}` : "",
     rdv.immat ? `Immatriculation : ${rdv.immat}` : "",
     rdv.motif ? `Motif : ${rdv.motif}` : "",
     rdv.statut ? `Statut : ${rdv.statut}` : "",
-    "Créé depuis Opr"
+    "Créé depuis DA-Gestion"
   ].filter(Boolean).join("\n");
 
   const url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
@@ -2407,7 +2407,7 @@ function initialiserApplication(){
 
   showPage("dashboard");
 
-  console.log("✅ Opr V2 chargé");
+  console.log("✅ DA-Gestion V2 chargé");
   verifierAlerteRdv();
   // Initialiser Firebase en arrière-plan
   initFirebase();
@@ -3102,7 +3102,7 @@ function genererCessionCreances(index){
 
 <div class="entete">
   <div class="entete-left">
-    <h3>${escHtml(ent.nom||"Opr")}</h3>
+    <h3>${escHtml(ent.nom||"DA-Gestion")}</h3>
     <p>${escHtml(ent.adresse||"")}</p>
     <p>Tél : ${escHtml(ent.telephone||"")}</p>
     <p>Email : ${escHtml(ent.email||"")}</p>
@@ -3736,7 +3736,7 @@ function envoyerSmsVehiculeTermine(index){
   if(!d){ toast("Dossier introuvable", "error"); return; }
 
   const ent = entreprise || {};
-  const nomEntreprise = ent.nom || "Opr";
+  const nomEntreprise = ent.nom || "DA-Gestion";
   const telEntreprise = ent.telephone || "";
 
   // Message SMS par défaut
@@ -4482,7 +4482,7 @@ Nous nous permettons de vous relancer concernant le dossier N°${d.numero} ouver
 Sans réponse de votre part dans les 8 jours, nous nous verrons dans l'obligation de facturer directement notre client.
 
 Cordialement,
-${ent.nom||"Opr"}
+${ent.nom||"DA-Gestion"}
 ${ent.telephone||""}`;
 
   ouvrirModal(`✉️ Relance assurance — Dossier ${d.numero}`, `
