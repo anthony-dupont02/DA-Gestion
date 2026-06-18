@@ -4499,88 +4499,329 @@ function renderRelancesAssurance(){
 function ouvrirRelanceEmail(index){
   const d = dossiers[index];
   if(!d) return;
-  const ent = entreprise || {};
+  const ent     = entreprise || {};
+  const dateAuj = new Date().toLocaleDateString("fr-FR");
   const montant   = Number(d.facture||d.devis||0);
   const rembourse = Number(d.montantRembourse||0);
   const resteDu   = Math.max(0, montant-rembourse);
   const jours     = _joursDepuis(d.dateCreation||d.dateSinistre);
-  const dateAuj   = new Date().toLocaleDateString("fr-FR");
 
-  const assuranceInfo = trouverAssurance(d.assurance||"") || {};
-  const telAssurance  = assuranceInfo.telephone || d.telephoneAssurance || "";
-  const emailAssuranceContact = assuranceInfo.email || d.emailAssurance || "";
+  const assuranceInfo        = trouverAssurance(d.assurance||"") || {};
+  const telAssurance         = assuranceInfo.telephone || d.telephoneAssurance || "";
+  const emailAssurance       = assuranceInfo.email     || d.emailAssurance     || "";
+  const adresseAssurance     = assuranceInfo.adresse   || d.adresseAssurance   || "";
+  const documentsRequis      = assuranceInfo.documents || "";
 
-  const msgDefaut = `Objet : Relance prise en charge — Dossier N°${d.numero}
+  // ── Courrier pré-rempli professionnel ──
+  const ligneRembourse = rembourse
+    ? `\n- Montant déjà remboursé : ${rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})} €\n- Reste dû              : ${resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})} €`
+    : "";
+
+  const courrierTexte =
+`${ent.nom||"DA-Gestion"}
+${ent.adresse||""}
+${ent.telephone||""}  ${ent.email||""}
+SIRET : ${ent.siret||"—"}
+
+${dateAuj}
+
+${d.assurance||"Compagnie d'assurance"}
+${adresseAssurance}
+
+Objet : RELANCE — Prise en charge sinistre N° ${d.sinistre||"—"} — Dossier N° ${d.numero}
 
 Madame, Monsieur,
 
-Nous nous permettons de vous relancer concernant le dossier N°${d.numero} ouvert le ${d.dateCreation||"—"} pour :
-- Client : ${d.client}
-- Véhicule : ${d.vehicule||"—"} ${d.immat?"("+d.immat+")":""}
-- Type de dommage : ${d.vitrage||d.typeDommage||"—"}
-- Numéro de sinistre : ${d.sinistre||"—"}
-- Montant : ${montant.toLocaleString("fr-FR",{minimumFractionDigits:2})} €${rembourse?"\n- Déjà remboursé : "+rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €\n- Reste dû : "+resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":""}
+Sauf erreur de notre part, nous n'avons pas reçu de réponse de votre part concernant la prise en charge du dossier ci-dessous, ouvert le ${d.dateCreation||"—"}.
 
-Sans réponse de votre part dans les 8 jours, nous nous verrons dans l'obligation de facturer directement notre client.
+COORDONNÉES CLIENT
+──────────────────────────────────────────
+Nom          : ${d.client||"—"}
+Véhicule     : ${d.vehicule||"—"} ${d.modele||""} ${d.immat?"— Immat : "+d.immat:""}
+Contrat N°   : ${d.contrat||"—"}
+N° sinistre  : ${d.sinistre||"—"}
+Date sinistre: ${d.dateSinistre||"—"}
 
-Cordialement,
+DÉTAIL DE L'INTERVENTION
+──────────────────────────────────────────
+Vitrage      : ${d.vitrage||"—"}
+Type dommage : ${d.typeDommage||"—"}
+Franchise    : ${d.franchise||"—"} ${d.montantFranchise?"("+d.montantFranchise+" €)":""}
+Montant HT   : ${montant?(montant/1.2).toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}
+Montant TTC  : ${montant?montant.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}${ligneRembourse}
+
+${documentsRequis?"Documents transmis : "+documentsRequis+"\n\n":""}Nous vous informons que sans réponse de votre part sous 8 jours ouvrés, nous serons dans l'obligation de facturer directement notre client.
+
+Dans l'attente de votre retour, nous restons à votre disposition pour tout renseignement complémentaire.
+
+Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées.
+
 ${ent.nom||"DA-Gestion"}
-${ent.telephone||""}`;
+${ent.telephone||""}
+${ent.email||""}`;
 
-  ouvrirModal(`✉️ Relance assurance — Dossier ${d.numero}`, `
+  ouvrirModal(`✉️ Courrier de relance — Dossier ${d.numero}`, `
     <div style="display:flex;flex-direction:column;gap:14px;">
 
-      <div style="display:flex;gap:12px;flex-wrap:wrap;">
-        <div class="card" style="flex:1;min-width:200px;padding:12px;background:#0f172a;">
-          <p style="font-size:12px;color:var(--muted);">🏢 Assurance</p>
-          <p style="font-weight:bold;">${escHtml(d.assurance||"—")}</p>
-          ${telAssurance?`<p style="font-size:12px;">📞 ${escHtml(telAssurance)}</p>`:""}
-          ${emailAssuranceContact?`<p style="font-size:12px;">📧 ${escHtml(emailAssuranceContact)}</p>`:""}
+      <!-- Résumé coordonnées -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:180px;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px;">
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:6px;">🏢 Assurance</div>
+          <div style="font-weight:bold;font-size:13px;">${escHtml(d.assurance||"—")}</div>
+          ${telAssurance?`<div style="font-size:12px;color:#38bdf8;margin-top:4px;">📞 ${escHtml(telAssurance)}</div>`:""}
+          ${emailAssurance?`<div style="font-size:12px;color:#38bdf8;">📧 ${escHtml(emailAssurance)}</div>`:""}
+          ${adresseAssurance?`<div style="font-size:11px;color:#64748b;margin-top:4px;">${escHtml(adresseAssurance)}</div>`:""}
         </div>
-        <div class="card" style="flex:1;min-width:200px;padding:12px;background:#0f172a;">
-          <p style="font-size:12px;color:var(--muted);">📁 Dossier</p>
-          <p style="font-weight:bold;">${escHtml(d.client)} — N°${escHtml(d.numero)}</p>
-          <p style="font-size:12px;color:#f87171;">⏱ ${jours} jours sans réponse</p>
-          ${resteDu?`<p style="font-size:12px;color:#4ade80;">💶 Reste dû : ${resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</p>`:""}
+        <div style="flex:1;min-width:180px;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px;">
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:6px;">👤 Client</div>
+          <div style="font-weight:bold;font-size:13px;">${escHtml(d.client||"—")}</div>
+          <div style="font-size:12px;color:#94a3b8;">${escHtml(d.vehicule||"—")} ${escHtml(d.immat||"")}</div>
+          <div style="font-size:12px;color:#94a3b8;">Sinistre : ${escHtml(d.sinistre||"—")}</div>
+          <div style="font-size:12px;color:#f87171;margin-top:4px;">⏱ ${jours} jours sans réponse</div>
+        </div>
+        <div style="flex:1;min-width:180px;background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px;">
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:6px;">💶 Montants</div>
+          <div style="font-size:13px;">Total : <b style="color:#38bdf8;">${montant?montant.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}</b></div>
+          ${rembourse?`<div style="font-size:12px;color:#4ade80;">Remboursé : ${rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</div>`:""}
+          ${resteDu?`<div style="font-size:12px;color:#f87171;font-weight:bold;">Reste dû : ${resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</div>`:""}
         </div>
       </div>
 
-      <div>
-        <label style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">📧 Email assurance</label>
-        <input type="email" id="rel_email" value="${escHtml(emailAssuranceContact)}" placeholder="email@assurance.fr" style="width:100%;">
+      <!-- Sélecteur modèle de courrier -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;color:#64748b;">📝 Modèle :</label>
+        <select id="rel_modele" onchange="changerModeleRelance(${index})" style="font-size:13px;flex:1;min-width:200px;">
+          <option value="standard">Relance standard (1ère relance)</option>
+          <option value="urgente">Relance urgente (+30 jours)</option>
+          <option value="mise_demeure">Mise en demeure formelle</option>
+          <option value="confirmation">Confirmation de prise en charge reçue</option>
+        </select>
       </div>
 
-      <div>
-        <label style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">💬 Message</label>
-        <textarea id="rel_message" rows="12" style="width:100%;font-size:12px;font-family:monospace;resize:vertical;">${msgDefaut}</textarea>
-      </div>
-
+      <!-- Email destinataire -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        ${telAssurance?`<button onclick="window.open('tel:${escHtml(telAssurance)}')" style="background:#0891b2;">📞 Appeler ${escHtml(telAssurance)}</button>`:""}
-        <button onclick="copierMessageRelance()" style="background:#334155;">📋 Copier le message</button>
+        <div style="flex:1;">
+          <label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">📧 Email assurance</label>
+          <input type="email" id="rel_email" value="${escHtml(emailAssurance)}" placeholder="service.sinistres@assurance.fr" style="width:100%;">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">📋 Objet</label>
+          <input type="text" id="rel_sujet" value="${escHtml("RELANCE — Prise en charge N°"+(d.sinistre||d.numero)+" — "+d.client)}" style="width:100%;">
+        </div>
       </div>
+
+      <!-- Corps du courrier -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">💬 Courrier</label>
+          <div style="display:flex;gap:6px;">
+            <button onclick="copierMessageRelance()" style="background:#334155;padding:5px 10px;font-size:11px;">📋 Copier</button>
+            <button onclick="imprimerCourrierRelance(${index})" style="background:#7c3aed;padding:5px 10px;font-size:11px;">🖨 Imprimer</button>
+            ${telAssurance?`<button onclick="window.open('tel:${escHtml(telAssurance)}')" style="background:#0891b2;padding:5px 10px;font-size:11px;">📞 Appeler</button>`:""}
+          </div>
+        </div>
+        <textarea id="rel_message" rows="14" style="width:100%;font-size:12px;font-family:'Courier New',monospace;line-height:1.5;resize:vertical;background:#0a0f1a;border:1px solid #1e293b;color:#e2e8f0;border-radius:8px;padding:12px;">${escHtml(courrierTexte)}</textarea>
+      </div>
+
     </div>`,
     function(){
       const email   = document.getElementById("rel_email")?.value.trim();
+      const sujet   = document.getElementById("rel_sujet")?.value.trim() || "Relance prise en charge";
       const message = document.getElementById("rel_message")?.value.trim();
-      if(!message){ toast("Message vide","error"); return false; }
-
-      // Ouvrir client mail avec le message
-      if(email){
-        const sujet = encodeURIComponent(`Relance prise en charge — Dossier N°${d.numero}`);
-        const corps = encodeURIComponent(message);
-        window.open(`mailto:${email}?subject=${sujet}&body=${corps}`);
-      }
-
-      // Enregistrer la relance
+      if(!message){ toast("Courrier vide","error"); return false; }
+      if(!email){ toast("Indiquez l'email de l'assurance","error"); return false; }
+      window.open("mailto:"+encodeURIComponent(email)+"?subject="+encodeURIComponent(sujet)+"&body="+encodeURIComponent(message));
       marquerRelanceEffectuee(index);
       enregistrerHistoriqueRelance(index, message);
+      toast("Email ouvert ✓ — relance enregistrée");
     }
   );
   setTimeout(()=>{
     const btn = document.getElementById("modalBtnOk");
-    if(btn){ btn.textContent = "✉️ Envoyer la relance"; btn.style.background = "#2563eb"; }
+    if(btn){ btn.textContent="📧 Envoyer l'email"; btn.style.background="#2563eb"; btn.style.padding="10px 20px"; }
   }, 50);
+}
+
+/* Changer le modèle de courrier */
+function changerModeleRelance(index){
+  const d   = dossiers[index];
+  const ent = entreprise || {};
+  const sel = document.getElementById("rel_modele")?.value;
+  const dateAuj = new Date().toLocaleDateString("fr-FR");
+  const montant   = Number(d.facture||d.devis||0);
+  const rembourse = Number(d.montantRembourse||0);
+  const resteDu   = Math.max(0, montant-rembourse);
+  const assuranceInfo = trouverAssurance(d.assurance||"") || {};
+  const adresseAssurance = assuranceInfo.adresse || d.adresseAssurance || "";
+  const jours = _joursDepuis(d.dateCreation||d.dateSinistre);
+  let texte = "";
+
+  if(sel === "urgente"){
+    texte =
+`${ent.nom||"DA-Gestion"}
+${ent.adresse||""} — Tél : ${ent.telephone||""} — ${ent.email||""}
+
+${dateAuj}
+
+${d.assurance||"Compagnie d'assurance"}
+${adresseAssurance}
+
+Objet : RELANCE URGENTE — Dossier N° ${d.numero} — Sinistre N° ${d.sinistre||"—"}
+
+Madame, Monsieur,
+
+Malgré notre précédente relance, nous n'avons toujours pas reçu de réponse concernant la prise en charge du dossier ci-dessus.
+
+Ce dossier est en attente depuis ${jours} jours. Sans retour de votre part sous 5 jours ouvrés, nous nous verrons contraints de :
+  1. Facturer la totalité de la prestation directement à votre assuré(e) — ${d.client}
+  2. Informer votre assuré(e) de l'absence de réponse de votre part
+  3. Transmettre le dossier à notre service contentieux
+
+Montant en attente : ${montant.toLocaleString("fr-FR",{minimumFractionDigits:2})} €${resteDu&&rembourse?" (reste dû : "+resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €)":""}
+Véhicule : ${d.vehicule||"—"} — Immat : ${d.immat||"—"}
+Contrat N° : ${d.contrat||"—"} — N° sinistre : ${d.sinistre||"—"}
+
+Veuillez agréer, Madame, Monsieur, nos salutations distinguées.
+
+${ent.nom||"DA-Gestion"} — ${ent.telephone||""} — ${ent.email||""}`;
+
+  } else if(sel === "mise_demeure"){
+    texte =
+`${ent.nom||"DA-Gestion"}
+${ent.adresse||""} — Tél : ${ent.telephone||""} — ${ent.email||""}
+SIRET : ${ent.siret||"—"}
+
+LETTRE RECOMMANDÉE AVEC ACCUSÉ DE RÉCEPTION
+
+${dateAuj}
+
+${d.assurance||"Compagnie d'assurance"}
+${adresseAssurance}
+
+Objet : MISE EN DEMEURE — Dossier N° ${d.numero}
+
+Madame, Monsieur,
+
+Par la présente, nous vous mettons en demeure de procéder au règlement de la prise en charge du sinistre N° ${d.sinistre||"—"} concernant votre assuré(e) ${d.client}, dans un délai de 15 jours à compter de la réception du présent courrier.
+
+RÉCAPITULATIF DU DOSSIER
+• Assuré         : ${d.client}
+• Véhicule       : ${d.vehicule||"—"} — Immat : ${d.immat||"—"}
+• N° contrat     : ${d.contrat||"—"}
+• N° sinistre    : ${d.sinistre||"—"}
+• Date sinistre  : ${d.dateSinistre||"—"}
+• Intervention   : ${d.vitrage||"—"}
+• Montant TTC    : ${montant.toLocaleString("fr-FR",{minimumFractionDigits:2})} €
+• Dossier ouvert depuis : ${jours} jours
+
+À défaut de règlement sous ce délai, nous nous réservons le droit d'engager toute procédure judiciaire nécessaire au recouvrement de cette créance, ainsi que des intérêts de retard au taux légal majoré.
+
+Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées.
+
+${ent.nom||"DA-Gestion"}
+${ent.telephone||""} — ${ent.email||""}
+SIRET : ${ent.siret||"—"}`;
+
+  } else if(sel === "confirmation"){
+    texte =
+`${ent.nom||"DA-Gestion"}
+${ent.adresse||""} — Tél : ${ent.telephone||""}
+
+${dateAuj}
+
+${d.assurance||"Compagnie d'assurance"}
+
+Objet : Confirmation de réception — Prise en charge N° ${d.sinistre||"—"}
+
+Madame, Monsieur,
+
+Nous accusons bonne réception de votre accord de prise en charge concernant le dossier N° ${d.numero} — ${d.client}.
+
+Nous procédons à la clôture du dossier et vous confirmons les informations suivantes :
+• Montant pris en charge : ${rembourse?rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"à définir"}
+• Franchise client      : ${d.montantFranchise||"—"} €
+• Véhicule             : ${d.vehicule||"—"} — ${d.immat||"—"}
+
+Nous vous remercions pour votre traitement rapide de ce dossier.
+
+Cordialement,
+${ent.nom||"DA-Gestion"} — ${ent.telephone||""}`;
+
+  } else {
+    // Standard — reconstruire le courrier par défaut
+    const assInfo2 = trouverAssurance(d.assurance||"") || {};
+    const docs2 = assInfo2.documents || "";
+    const ligneRembourse2 = rembourse
+      ? "\n- Montant déjà remboursé : "+rembourse.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €\n- Reste dû              : "+resteDu.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €"
+      : "";
+    texte =
+`${ent.nom||"DA-Gestion"}
+${ent.adresse||""}
+${ent.telephone||""}  ${ent.email||""}
+SIRET : ${ent.siret||"—"}
+
+${dateAuj}
+
+${d.assurance||"Compagnie d'assurance"}
+${adresseAssurance}
+
+Objet : RELANCE — Prise en charge sinistre N° ${d.sinistre||"—"} — Dossier N° ${d.numero}
+
+Madame, Monsieur,
+
+Sauf erreur de notre part, nous n'avons pas reçu de réponse de votre part concernant la prise en charge du dossier ci-dessous, ouvert le ${d.dateCreation||"—"}.
+
+COORDONNÉES CLIENT
+──────────────────────────────────────────
+Nom          : ${d.client||"—"}
+Véhicule     : ${d.vehicule||"—"} ${d.modele||""} ${d.immat?"— Immat : "+d.immat:""}
+Contrat N°   : ${d.contrat||"—"}
+N° sinistre  : ${d.sinistre||"—"}
+Date sinistre: ${d.dateSinistre||"—"}
+
+DÉTAIL DE L'INTERVENTION
+──────────────────────────────────────────
+Vitrage      : ${d.vitrage||"—"}
+Type dommage : ${d.typeDommage||"—"}
+Franchise    : ${d.franchise||"—"} ${d.montantFranchise?"("+d.montantFranchise+" €)":""}
+Montant TTC  : ${montant?montant.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €":"—"}${ligneRembourse2}
+
+${docs2?"Documents transmis : "+docs2+"\n\n":""}Sans réponse de votre part dans les 8 jours ouvrés, nous serons dans l'obligation de facturer directement notre client.
+
+Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées.
+
+${ent.nom||"DA-Gestion"}
+${ent.telephone||""} — ${ent.email||""}`;
+  }
+
+  const el = document.getElementById("rel_message");
+  if(el) el.value = texte;
+}
+
+/* Imprimer le courrier de relance */
+function imprimerCourrierRelance(index){
+  const d   = dossiers[index];
+  const ent = entreprise || {};
+  const msg = document.getElementById("rel_message")?.value || "";
+  const f   = window.open("","_blank","width=800,height=900");
+  f.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Courrier relance — ${d.numero}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:40px;max-width:680px;margin:0 auto;line-height:1.7;}
+    pre{font-family:Arial,sans-serif;font-size:12px;white-space:pre-wrap;word-wrap:break-word;line-height:1.7;}
+    .bandeau{background:#1a3a6a;color:white;padding:12px 20px;border-radius:6px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;}
+    .bandeau span{font-size:11px;opacity:.8;}
+    @media print{.bandeau{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+  </style></head><body>
+  <div class="bandeau">
+    <b>${escHtml(ent.nom||"DA-Gestion")}</b>
+    <span>Dossier N° ${escHtml(d.numero)} — ${new Date().toLocaleDateString("fr-FR")}</span>
+  </div>
+  <pre>${escHtml(msg)}</pre>
+  </body></html>`);
+  f.document.close();
+  setTimeout(()=>f.print(), 400);
 }
 
 function copierMessageRelance(){
