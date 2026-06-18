@@ -42,6 +42,7 @@
       <a href="#" onclick="showPage('relancesAssurance');setActive(this)">📨 Relances assurance <span id="badgeRelances" style="background:#dc2626;color:#fff;border-radius:9999px;padding:1px 7px;font-size:11px;margin-left:4px;font-weight:bold;"></span></a>
 
       <div class="nav-section-label">🔩 MÉCANIQUE</div>
+      <a href="#" onclick="showPage('dashboardMecanique');setActive(this)">📊 Tableau de bord meca</a>
       <a href="#" onclick="showPage('mecanique');setActive(this)">🔩 Dossiers mécanique</a>
 
       <div class="nav-section-label">💼 GESTION</div>
@@ -62,6 +63,10 @@
         ⚠️ Données non sauvegardées
         <button onclick="saveData();toast('Sauvegardé ✓')" style="margin-left:auto;padding:3px 8px;font-size:11px;background:#ea580c;border:none;">💾 Sauvegarder</button>
       </div>
+      <div id="bandeauOffline" style="display:none;align-items:center;gap:8px;background:#7f1d1d;border:1px solid #dc2626;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#fca5a5;">
+        📵 Mode hors-ligne
+      </div>
+      <a href="#" onclick="afficherHistorique();return false;" style="font-size:12px;color:#475569;text-align:center;display:block;margin-bottom:6px;text-decoration:none;">📋 Historique actions</a>
       <div class="version-info">DA-Gestion v2</div>
     </div>
 
@@ -778,6 +783,58 @@
               </tr>
             </thead>
             <tbody id="listeDocuments"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- DASHBOARD MÉCANIQUE -->
+    <section id="dashboardMecanique" class="page hidden">
+
+      <h2>📊 Tableau de bord mécanique</h2>
+
+      <!-- Compteurs -->
+      <div class="cards" style="margin-bottom:20px;" id="mecDashCompteurs">
+        <div class="card compteur-card compteur-attente"><h3>En attente</h3><span id="md_attente">0</span></div>
+        <div class="card compteur-card" style="border-top:3px solid #0891b2;"><h3 style="color:var(--muted);">Attente pièces</h3><span style="color:#0891b2;" id="md_pieces">0</span></div>
+        <div class="card compteur-card compteur-encours"><h3>En cours</h3><span id="md_encours">0</span></div>
+        <div class="card compteur-card compteur-termine"><h3>Terminés</h3><span id="md_termine">0</span></div>
+        <div class="card compteur-card compteur-facture"><h3>Facturés</h3><span id="md_facture">0</span></div>
+        <div class="card" style="border-top:3px solid #38bdf8;"><h3>CA total</h3><span style="color:#38bdf8;font-size:26px;" id="md_ca">0 €</span></div>
+      </div>
+
+      <!-- Graphique CA mécanique -->
+      <div class="cards" style="margin-bottom:20px;">
+        <div class="card">
+          <h2>📊 CA mécanique — 6 derniers mois</h2>
+          <canvas id="graphiqueCAMeca" width="700" height="200" style="width:100%;display:block;"></canvas>
+        </div>
+        <div class="card" style="max-width:320px;">
+          <h2>🔧 Top interventions</h2>
+          <div id="md_topInterventions" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <!-- Graphique par technicien -->
+      <div class="cards" style="margin-bottom:20px;">
+        <div class="card">
+          <h2>👷 CA par technicien</h2>
+          <div id="md_parTechnicien" style="margin-top:8px;"></div>
+        </div>
+        <div class="card">
+          <h2>⏱ Rappels à venir</h2>
+          <div id="md_rappels" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <!-- Dossiers récents mécanique -->
+      <div class="card">
+        <h2>🔩 Derniers dossiers</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>N°</th><th>Client</th><th>Véhicule</th><th>Intervention</th><th>Entrée</th><th>Montant</th><th>Statut</th></tr></thead>
+            <tbody id="md_listeDerniers"></tbody>
           </table>
         </div>
       </div>
