@@ -5187,11 +5187,7 @@ function afficherHistorique(){
   setTimeout(()=>{const btn=document.getElementById("modalBtnOk");if(btn)btn.style.display="none";},50);
 }
 
-/* Injecter logAction dans les fonctions clés via saveData */
-const _saveDataBase = saveData;
-function saveData(){
-  _saveDataBase();
-}
+/* logAction est appelé directement dans les fonctions clés */
 
 /* =====================================================
    MODE HORS-LIGNE (Service Worker simplifié)
