@@ -700,7 +700,7 @@ function showPage(pageId){
   // Nouveaux modules
   if(pageId === "stockPieces")         { setTimeout(()=>{ renderStock(); }, 0); }
   if(pageId === "planningTechniciens") { setTimeout(()=>{ renderPlanning(); }, 0); }
-  if(pageId === "iaDevis")             { setTimeout(()=>{ remplirVehiculesIA(); majStatsIA(); renderHistoriqueIA(); }, 0); }
+  if(pageId === "outilsRapides")       { setTimeout(()=>{ renderCatalogue(); renderCommandes(); renderCalc(); majCompteursCmds(); }, 0); }
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById(pageId);
   if(page) page.classList.remove("hidden");
@@ -6021,236 +6021,431 @@ function supprimerTache(index){
   });
 }
 
+
 /* =====================================================================
-   MODULE IA DEVIS AUTOMATIQUE
+   MODULE OUTILS RAPIDES
+   1. Catalogue de prix
+   2. Calculateur de devis rapide
+   3. Commandes fournisseurs
 ===================================================================== */
 
-let iaDevisHistorique = JSON.parse(localStorage.getItem("iaDevisHistorique")) || [];
-let iaLignesGenerees = [];
+/* ── 1. CATALOGUE DE PRIX ── */
 
-function exempleIA(texte){
-  const el = document.getElementById("iaDescription");
-  if(el){ el.value = texte; el.focus(); }
+let catalogueTarifs = JSON.parse(localStorage.getItem("catalogueTarifs")) || [
+  { id:1, designation:"Remplacement pare-brise (fourni)",        categorie:"Vitrage",    prixHT:180, tva:20, unite:"forfait" },
+  { id:2, designation:"Remplacement vitre latérale (fournie)",   categorie:"Vitrage",    prixHT:120, tva:20, unite:"forfait" },
+  { id:3, designation:"Main d'œuvre vitrage",                    categorie:"Vitrage",    prixHT:80,  tva:20, unite:"heure"   },
+  { id:4, designation:"Recalibrage caméra ADAS",                 categorie:"Vitrage",    prixHT:150, tva:20, unite:"forfait" },
+  { id:5, designation:"Vidange moteur + filtre huile",           categorie:"Mécanique",  prixHT:45,  tva:20, unite:"forfait" },
+  { id:6, designation:"Remplacement plaquettes avant (paire)",   categorie:"Mécanique",  prixHT:65,  tva:20, unite:"forfait" },
+  { id:7, designation:"Remplacement disques avant (paire)",      categorie:"Mécanique",  prixHT:90,  tva:20, unite:"forfait" },
+  { id:8, designation:"Courroie de distribution",                categorie:"Mécanique",  prixHT:280, tva:20, unite:"forfait" },
+  { id:9, designation:"Main d'œuvre mécanique",                  categorie:"Mécanique",  prixHT:70,  tva:20, unite:"heure"   },
+  { id:10, designation:"Diagnostic électronique",                categorie:"Électrique", prixHT:60,  tva:20, unite:"forfait" },
+  { id:11, designation:"Remplacement batterie 12V",              categorie:"Électrique", prixHT:110, tva:20, unite:"forfait" },
+  { id:12, designation:"Recharge climatisation",                 categorie:"Mécanique",  prixHT:85,  tva:20, unite:"forfait" },
+];
+let _catalogueNextId = Math.max(...catalogueTarifs.map(t=>t.id||0), 0) + 1;
+
+function saveCatalogue(){
+  localStorage.setItem("catalogueTarifs", JSON.stringify(catalogueTarifs));
+  if(db && _firebaseActif) db.ref("/catalogueTarifs").set(catalogueTarifs).catch(e=>console.warn(e));
 }
 
-function viderIADevis(){
-  const el = document.getElementById("iaDescription");
-  if(el) el.value = "";
-  document.getElementById("iaResultat").style.display = "none";
-  iaLignesGenerees = [];
+const CATEG_COULEURS = { "Vitrage":"#0891b2", "Mécanique":"#7c3aed", "Carrosserie":"#ea580c", "Électrique":"#ca8a04" };
+
+function renderCatalogue(){
+  const zone = document.getElementById("listeCatalogue");
+  if(!zone) return;
+  const filtre = document.getElementById("catalogueFiltreCategorie")?.value || "";
+  const liste  = filtre ? catalogueTarifs.filter(t=>t.categorie===filtre) : catalogueTarifs;
+
+  if(liste.length === 0){
+    zone.innerHTML = `<p style="color:#64748b;font-size:13px;grid-column:1/-1;">Aucun tarif dans cette catégorie. Cliquez sur ➕ Ajouter tarif.</p>`;
+    return;
+  }
+
+  zone.innerHTML = liste.map((t,i) => {
+    const couleur = CATEG_COULEURS[t.categorie] || "#64748b";
+    const idx = catalogueTarifs.indexOf(t);
+    const ttc = t.prixHT * (1 + t.tva/100);
+    return `<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px;border-top:3px solid ${couleur};position:relative;">
+      <div style="font-size:11px;color:${couleur};font-weight:bold;margin-bottom:4px;text-transform:uppercase;">${escHtml(t.categorie)}</div>
+      <div style="font-size:14px;font-weight:bold;color:#f1f5f9;margin-bottom:8px;line-height:1.3;">${escHtml(t.designation)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <div>
+          <span style="font-size:16px;font-weight:bold;color:#34d399;">${t.prixHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} € HT</span>
+          <span style="font-size:11px;color:#64748b;margin-left:4px;">/ ${escHtml(t.unite||"forfait")}</span><br>
+          <span style="font-size:12px;color:#94a3b8;">TTC : ${ttc.toLocaleString("fr-FR",{minimumFractionDigits:2})} € (TVA ${t.tva}%)</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button onclick="ajouterTarifAuDevis(${idx})" class="btn-success" style="font-size:12px;padding:5px 10px;">➕ Au devis</button>
+          <button onclick="ajouterTarifAuCalc(${idx})"  style="background:#334155;font-size:12px;padding:5px 10px;">🧮 Au calc.</button>
+        </div>
+      </div>
+      <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px;">
+        <button onclick="editerTarif(${idx})" style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;padding:2px 4px;">✏️</button>
+        <button onclick="supprimerTarif(${idx})" style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;padding:2px 4px;">🗑</button>
+      </div>
+    </div>`;
+  }).join("");
 }
 
-function remplirVehiculesIA(){
-  const sel = document.getElementById("iaVehiculeRef");
-  if(!sel) return;
-  sel.innerHTML = `<option value="">Sélectionner un véhicule (optionnel)...</option>`;
-  vehicules.forEach((v,i)=>{
-    const client = clients.find(c=>`${c.nom} ${c.prenom||""}`.trim()===v.proprietaire) || {};
-    sel.innerHTML += `<option value="${i}">${escHtml(v.marque||"")} ${escHtml(v.modele||"")} ${escHtml(v.immat||"")} ${v.proprietaire?`— ${escHtml(v.proprietaire)}`:""}</option>`;
+function ajouterTarifAuDevis(idx){
+  const t = catalogueTarifs[idx];
+  if(!t) return;
+  if(typeof lignesDocument === "undefined"){ toast("Ouvrez d'abord le module Devis/Factures","error"); return; }
+  lignesDocument.push({ design: t.designation, qte: 1, prixHT: t.prixHT, tva: t.tva });
+  showPage("devisFacture");
+  setTimeout(()=>{ if(typeof renderLignes==="function") renderLignes(); }, 150);
+  toast(`"${t.designation}" ajouté au devis ✓`);
+}
+
+function ajouterTarifAuCalc(idx){
+  const t = catalogueTarifs[idx];
+  if(!t) return;
+  _calcLignes.push({ designation: t.designation, qte: 1, prixHT: t.prixHT, tva: t.tva });
+  renderCalc();
+  toast(`"${t.designation}" ajouté au calculateur ✓`);
+}
+
+function ouvrirAjoutTarif(index){
+  const estEdit = index !== undefined && catalogueTarifs[index];
+  const t = estEdit ? catalogueTarifs[index] : {};
+  ouvrirModal(estEdit ? "✏️ Modifier le tarif" : "➕ Nouveau tarif",
+    `<div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="grid-column:1/-1;">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Désignation *</label>
+        <input type="text" id="ct_design" value="${escHtml(t.designation||"")}" placeholder="Ex: Main d'œuvre freinage avant" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Catégorie</label>
+        <select id="ct_categ" style="width:100%;box-sizing:border-box;">
+          ${["Vitrage","Mécanique","Carrosserie","Électrique"].map(c=>`<option value="${c}" ${(t.categorie||"Mécanique")===c?"selected":""}>${c}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Unité</label>
+        <select id="ct_unite" style="width:100%;box-sizing:border-box;">
+          ${["forfait","heure","pièce","kit"].map(u=>`<option value="${u}" ${(t.unite||"forfait")===u?"selected":""}>${u}</option>`).join("")}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Prix HT (€) *</label>
+        <input type="number" id="ct_prix" value="${t.prixHT||""}" step="0.01" placeholder="0.00" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">TVA</label>
+        <select id="ct_tva" style="width:100%;box-sizing:border-box;">
+          ${[20,10,5.5,0].map(v=>`<option value="${v}" ${(t.tva||20)===v?"selected":""}>${v}%</option>`).join("")}
+        </select>
+      </div>
+    </div>`,
+    function(){
+      const design = document.getElementById("ct_design")?.value.trim();
+      const prix   = parseFloat(document.getElementById("ct_prix")?.value||"0");
+      if(!design || !prix){ toast("Désignation et prix obligatoires","error"); return false; }
+      const tarif = {
+        id:          estEdit ? t.id : _catalogueNextId++,
+        designation: design,
+        categorie:   document.getElementById("ct_categ")?.value || "Mécanique",
+        unite:       document.getElementById("ct_unite")?.value || "forfait",
+        prixHT:      prix,
+        tva:         parseFloat(document.getElementById("ct_tva")?.value||"20")
+      };
+      if(estEdit){ catalogueTarifs[index] = tarif; }
+      else { catalogueTarifs.push(tarif); }
+      saveCatalogue();
+      renderCatalogue();
+      toast(estEdit ? "Tarif modifié ✓" : "Tarif ajouté ✓");
+    }
+  );
+}
+
+function editerTarif(idx){ ouvrirAjoutTarif(idx); }
+
+function supprimerTarif(idx){
+  confirmerAction(`Supprimer le tarif "${catalogueTarifs[idx]?.designation}" ?`, ()=>{
+    catalogueTarifs.splice(idx,1);
+    saveCatalogue();
+    renderCatalogue();
+    toast("Tarif supprimé");
   });
 }
 
-async function genererDevisIA(){
-  const description = document.getElementById("iaDescription")?.value.trim();
-  if(!description || description.length < 10){ toast("Veuillez décrire l'intervention (min. 10 caractères)","error"); return; }
+/* ── 2. CALCULATEUR DE DEVIS RAPIDE ── */
 
-  const module = document.getElementById("iaModuleType")?.value || "mecanique";
-  const idxVeh = document.getElementById("iaVehiculeRef")?.value;
-  const vehiculeInfo = (idxVeh !== "" && vehicules[idxVeh])
-    ? `Véhicule : ${vehicules[idxVeh].marque||""} ${vehicules[idxVeh].modele||""}, Immat : ${vehicules[idxVeh].immat||""}, Année : ${vehicules[idxVeh].annee||""}`
-    : "";
+let _calcLignes = [];
 
-  const btn = document.getElementById("btnGenererIA");
-  if(btn){ btn.disabled = true; btn.textContent = "⏳ Génération en cours..."; }
-
-  const debut = Date.now();
-
-  const prompt = `Tu es un expert en réparation automobile et vitrage en France. 
-Tu dois générer un devis détaillé pour un garage automobile.
-
-Module : ${module === "vitrage" ? "Vitrage / Bris de glace" : module === "carrosserie" ? "Carrosserie" : "Mécanique automobile"}
-${vehiculeInfo ? vehiculeInfo : ""}
-
-Demande client : "${description}"
-
-Génère un devis avec les lignes de travaux/pièces. 
-Retourne UNIQUEMENT un JSON valide avec ce format exact (sans markdown, sans backticks) :
-{
-  "lignes": [
-    {"designation": "Nom de la prestation ou pièce", "quantite": 1, "prixUnitaireHT": 120.00, "tva": 20},
-    ...
-  ],
-  "commentaire": "Remarques ou recommandations du technicien (1-2 phrases)"
+function ajouterLigneCalc(){
+  const design = document.getElementById("calcDesign")?.value.trim();
+  const qte    = parseFloat(document.getElementById("calcQte")?.value||"1");
+  const prix   = parseFloat(document.getElementById("calcPrix")?.value||"0");
+  const tva    = parseFloat(document.getElementById("calcTVA")?.value||"20");
+  if(!design){ toast("Désignation obligatoire","error"); return; }
+  if(!prix || prix <= 0){ toast("Prix obligatoire","error"); return; }
+  _calcLignes.push({ designation: design, qte, prixHT: prix, tva });
+  document.getElementById("calcDesign").value = "";
+  document.getElementById("calcPrix").value   = "";
+  document.getElementById("calcQte").value    = "1";
+  renderCalc();
+  document.getElementById("calcDesign")?.focus();
 }
 
-Règles :
-- Prix en euros HT réalistes pour un garage en France en 2024
-- TVA 20% pour pièces et main d'oeuvre, 10% pour certains travaux si applicable
-- Séparer la main d'oeuvre des pièces
-- Maximum 8 lignes
-- Désignations claires et professionnelles en français
-- Quantités réalistes`;
-
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-
-    const data = await response.json();
-    const texte = data.content?.map(b=>b.text||"").join("") || "";
-
-    let json;
-    try {
-      const clean = texte.replace(/```json|```/g,"").trim();
-      json = JSON.parse(clean);
-    } catch(e){
-      toast("Erreur de format IA — réessayez","error");
-      console.warn("Réponse IA brute :", texte);
-      return;
-    }
-
-    const duree = ((Date.now()-debut)/1000).toFixed(1)+"s";
-    iaLignesGenerees = json.lignes || [];
-    afficherResultatIA(json, description, duree);
-
-    // Historique
-    iaDevisHistorique.unshift({
-      date: new Date().toISOString(),
-      description: description.substring(0,80)+"...",
-      module,
-      nbLignes: iaLignesGenerees.length,
-      totalTTC: iaLignesGenerees.reduce((a,l)=>a+l.quantite*l.prixUnitaireHT*(1+l.tva/100),0),
-      duree
-    });
-    if(iaDevisHistorique.length > 20) iaDevisHistorique.pop();
-    localStorage.setItem("iaDevisHistorique", JSON.stringify(iaDevisHistorique));
-    majStatsIA();
-    renderHistoriqueIA();
-
-  } catch(err){
-    toast("Erreur de connexion à l'IA","error");
-    console.error(err);
-  } finally {
-    if(btn){ btn.disabled=false; btn.textContent="🤖 Générer le devis avec l'IA"; }
-  }
-}
-
-function afficherResultatIA(json, description, duree){
-  const lignes = json.lignes || [];
+function renderCalc(){
+  const tbody = document.getElementById("calcLignes");
+  if(!tbody) return;
   let totalHT = 0, totalTVA = 0;
 
-  const html = `
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead><tr style="background:#0f172a;">
-        <th style="padding:10px;text-align:left;">Désignation</th>
-        <th style="padding:10px;text-align:center;width:60px;">Qté</th>
-        <th style="padding:10px;text-align:right;width:110px;">Prix HT</th>
-        <th style="padding:10px;text-align:center;width:60px;">TVA</th>
-        <th style="padding:10px;text-align:right;width:110px;">Total TTC</th>
-      </tr></thead>
-      <tbody>
-        ${lignes.map(l=>{
-          const ht = l.quantite * l.prixUnitaireHT;
-          const tva = ht * (l.tva/100);
-          totalHT += ht; totalTVA += tva;
-          return `<tr style="border-bottom:1px solid #1e293b;">
-            <td style="padding:10px;">${escHtml(l.designation)}</td>
-            <td style="padding:10px;text-align:center;">${l.quantite}</td>
-            <td style="padding:10px;text-align:right;">${l.prixUnitaireHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
-            <td style="padding:10px;text-align:center;color:#94a3b8;">${l.tva}%</td>
-            <td style="padding:10px;text-align:right;font-weight:bold;">${(ht+tva).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
-          </tr>`;
-        }).join("")}
-      </tbody>
-    </table>
-    <p style="font-size:11px;color:#475569;margin-top:8px;text-align:right;">⏱ Généré en ${duree}</p>`;
-
-  const totalTTC = totalHT + totalTVA;
-  document.getElementById("iaLignesResultat").innerHTML = html;
-  document.getElementById("iaTotalHT").textContent  = totalHT.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €";
-  document.getElementById("iaTotalTVA").textContent = totalTVA.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €";
-  document.getElementById("iaTotalTTC").textContent = totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €";
-
-  const zoneComm = document.getElementById("iaCommentaireIA");
-  if(json.commentaire && zoneComm){
-    zoneComm.textContent = "💬 " + json.commentaire;
-    zoneComm.style.display = "";
+  if(_calcLignes.length === 0){
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#64748b;padding:16px;">Aucune ligne — ajoutez des prestations ci-dessus</td></tr>`;
+  } else {
+    tbody.innerHTML = _calcLignes.map((l,i)=>{
+      const ht  = l.qte * l.prixHT;
+      const tva = ht * (l.tva/100);
+      totalHT  += ht;
+      totalTVA += tva;
+      return `<tr>
+        <td>${escHtml(l.designation)}</td>
+        <td style="text-align:center;">${l.qte}</td>
+        <td style="text-align:right;">${l.prixHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
+        <td style="text-align:center;color:#94a3b8;">${l.tva}%</td>
+        <td style="text-align:right;font-weight:bold;">${(ht+tva).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
+        <td><button onclick="_calcLignes.splice(${i},1);renderCalc()" class="delete-btn" style="padding:3px 7px;font-size:11px;">✖</button></td>
+      </tr>`;
+    }).join("");
   }
 
-  document.getElementById("iaResultat").style.display = "";
-  document.getElementById("iaResultat").scrollIntoView({behavior:"smooth"});
-  toast("Devis généré avec succès ✓");
+  const fmt = v => v.toLocaleString("fr-FR",{minimumFractionDigits:2}) + " €";
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  set("calcTotalHT",  fmt(totalHT));
+  set("calcTotalTVA", fmt(totalTVA));
+  set("calcTotalTTC", fmt(totalHT+totalTVA));
 }
 
-function envoyerDevisVersModule(){
-  if(!iaLignesGenerees || iaLignesGenerees.length === 0){ toast("Aucune ligne à envoyer","error"); return; }
-  // Injecter dans le module Devis/Factures
-  lignesDocument = iaLignesGenerees.map(l=>({
-    design: l.designation,
-    qte: l.quantite,
-    prixHT: l.prixUnitaireHT,
-    tva: l.tva
-  }));
+function viderCalc(){
+  confirmerAction("Vider toutes les lignes du calculateur ?", ()=>{
+    _calcLignes = [];
+    renderCalc();
+    toast("Calculateur vidé");
+  });
+}
+
+function envoyerCalcVersDevis(){
+  if(_calcLignes.length === 0){ toast("Aucune ligne à envoyer","error"); return; }
+  if(typeof lignesDocument === "undefined"){ toast("Module Devis/Factures indisponible","error"); return; }
+  lignesDocument = _calcLignes.map(l=>({ design: l.designation, qte: l.qte, prixHT: l.prixHT, tva: l.tva }));
   showPage("devisFacture");
-  setTimeout(()=>{
-    if(typeof renderLignes === "function") renderLignes();
-    toast("Lignes envoyées vers Devis/Factures ✓");
-  }, 200);
+  setTimeout(()=>{ if(typeof renderLignes==="function") renderLignes(); toast(`${_calcLignes.length} ligne(s) envoyée(s) vers Devis/Factures ✓`); }, 150);
 }
 
-function copierDevisIA(){
-  const lignes = iaLignesGenerees.map(l=>`${l.designation} — ${l.quantite} x ${l.prixUnitaireHT.toFixed(2)} € HT`).join("\n");
-  navigator.clipboard.writeText(lignes).then(()=>toast("Devis copié dans le presse-papier ✓")).catch(()=>toast("Copie non disponible","error"));
+function copierCalcTexte(){
+  if(_calcLignes.length === 0){ toast("Aucune ligne à copier","error"); return; }
+  const lignes = _calcLignes.map(l=>{
+    const ttc = (l.qte * l.prixHT * (1 + l.tva/100));
+    return `${l.designation} — ${l.qte} x ${l.prixHT.toFixed(2)} € HT = ${ttc.toFixed(2)} € TTC`;
+  });
+  const totalTTC = _calcLignes.reduce((a,l)=>a+l.qte*l.prixHT*(1+l.tva/100),0);
+  lignes.push(`\nTOTAL TTC : ${totalTTC.toFixed(2)} €`);
+  navigator.clipboard.writeText(lignes.join("\n"))
+    .then(()=>toast("Devis copié dans le presse-papier ✓"))
+    .catch(()=>toast("Copie non disponible","error"));
 }
 
-function majStatsIA(){
-  const total = iaDevisHistorique.length;
-  const montantMoyen = total > 0 ? iaDevisHistorique.reduce((a,h)=>a+(h.totalTTC||0),0)/total : 0;
-  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
-  set("iaStatTotal", total);
-  set("iaStatMontant", total > 0 ? montantMoyen.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—");
+/* ── 3. COMMANDES FOURNISSEURS ── */
+
+let commandesFournisseurs = JSON.parse(localStorage.getItem("commandesFournisseurs")) || [];
+let _cmdNextId = Math.max(...commandesFournisseurs.map(c=>parseInt(c.numero||"0")||0), 0) + 1;
+
+function saveCommandes(){
+  localStorage.setItem("commandesFournisseurs", JSON.stringify(commandesFournisseurs));
+  if(db && _firebaseActif) db.ref("/commandesFournisseurs").set(commandesFournisseurs).catch(e=>console.warn(e));
+  majCompteursCmds();
 }
 
-function renderHistoriqueIA(){
-  const zone = document.getElementById("iaHistorique");
-  if(!zone) return;
-  if(iaDevisHistorique.length === 0){ zone.innerHTML = `<p style="color:#64748b;font-size:13px;">Aucun devis généré pour l'instant.</p>`; return; }
-  zone.innerHTML = `<div class="table-wrapper"><table style="font-size:13px;">
-    <thead><tr>
-      <th>Date</th><th>Description</th><th>Module</th><th>Lignes</th><th>Total TTC</th><th>Durée</th>
-    </tr></thead>
-    <tbody>
-      ${iaDevisHistorique.map(h=>`<tr>
-        <td style="white-space:nowrap;">${new Date(h.date).toLocaleDateString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td>
-        <td style="color:#94a3b8;font-size:12px;">${escHtml(h.description)}</td>
-        <td><span style="background:#1e293b;padding:2px 8px;border-radius:4px;font-size:12px;">${escHtml(h.module)}</span></td>
-        <td style="text-align:center;">${h.nbLignes}</td>
-        <td style="font-weight:bold;color:#34d399;">${(h.totalTTC||0).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
-        <td style="color:#64748b;font-size:12px;">${h.duree||"—"}</td>
-      </tr>`).join("")}
-    </tbody>
-  </table></div>`;
+const STATUT_CMD_COULEUR = { "En attente":"#f59e0b", "En cours":"#2563eb", "Reçue":"#16a34a", "Annulée":"#64748b" };
+const STATUT_CMD_EMOJI   = { "En attente":"⏳", "En cours":"🚚", "Reçue":"✅", "Annulée":"❌" };
+
+function majCompteursCmds(){
+  const attente  = commandesFournisseurs.filter(c=>c.statut==="En attente").length;
+  const encours  = commandesFournisseurs.filter(c=>c.statut==="En cours").length;
+  const recues   = commandesFournisseurs.filter(c=>c.statut==="Reçue").length;
+  const montant  = commandesFournisseurs.reduce((a,c)=>a+(parseFloat(c.montantHT)||0),0);
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  set("cmdAttente", attente);
+  set("cmdEnCours", encours);
+  set("cmdRecues",  recues);
+  set("cmdMontantTotal", montant.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €");
+
+  // Peupler filtre fournisseurs
+  const sel = document.getElementById("cmdFiltreFournisseur");
+  if(sel){
+    const fournis = [...new Set(commandesFournisseurs.map(c=>c.fournisseur).filter(Boolean))].sort();
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">Tous les fournisseurs</option>` +
+      fournis.map(f=>`<option value="${escHtml(f)}" ${cur===f?"selected":""}>${escHtml(f)}</option>`).join("");
+  }
 }
 
-/* =====================================================================
-   INTÉGRATION FIREBASE POUR LES NOUVEAUX MODULES
-===================================================================== */
+function renderCommandes(){
+  const tbody = document.getElementById("listeCommandes");
+  if(!tbody) return;
+  const filtreStatut   = document.getElementById("cmdFiltreStatut")?.value   || "";
+  const filtreFourni   = document.getElementById("cmdFiltreFournisseur")?.value || "";
 
-// Chargement Firebase pour les nouveaux modules (appelé manuellement après initFirebase)
-async function chargerNouveauxModulesFirebase(){
-  if(!db) return;
-  try {
-    const snap = await db.ref("/stockPieces").get();
-    if(snap.exists()){ stockPieces = Object.values(snap.val()); localStorage.setItem("stockPieces", JSON.stringify(stockPieces)); }
-    const snap2 = await db.ref("/tachesPlanning").get();
-    if(snap2.exists()){ tachesPlanning = Object.values(snap2.val()); localStorage.setItem("tachesPlanning", JSON.stringify(tachesPlanning)); }
-  } catch(e){ console.warn("Erreur chargement nouveaux modules Firebase:", e); }
+  let liste = commandesFournisseurs.filter((c,i)=>{
+    c._index = i;
+    if(filtreStatut && c.statut !== filtreStatut) return false;
+    if(filtreFourni && c.fournisseur !== filtreFourni) return false;
+    return true;
+  }).reverse();
+
+  if(liste.length === 0){
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#64748b;padding:20px;">Aucune commande</td></tr>`;
+    majCompteursCmds();
+    return;
+  }
+
+  tbody.innerHTML = liste.map(c=>{
+    const couleur = STATUT_CMD_COULEUR[c.statut] || "#64748b";
+    const emoji   = STATUT_CMD_EMOJI[c.statut]   || "•";
+    return `<tr>
+      <td><b style="color:#38bdf8;">CMD-${String(c.numero).padStart(4,"0")}</b></td>
+      <td style="white-space:nowrap;">${c.date||"—"}</td>
+      <td><b>${escHtml(c.fournisseur||"—")}</b></td>
+      <td>${escHtml(c.designation||"—")}<br><span style="font-size:11px;color:#64748b;">${escHtml(c.reference||"")}</span></td>
+      <td style="text-align:center;">${c.quantite||1}</td>
+      <td style="text-align:right;">${c.montantHT ? parseFloat(c.montantHT).toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—"}</td>
+      <td style="font-size:12px;color:#94a3b8;">${escHtml(c.dossierRef||"—")}</td>
+      <td>
+        <select onchange="changerStatutCmd(${c._index}, this.value)" style="font-size:12px;padding:3px 6px;background:#0f172a;border:1px solid ${couleur};color:${couleur};border-radius:4px;">
+          ${["En attente","En cours","Reçue","Annulée"].map(s=>`<option value="${s}" ${c.statut===s?"selected":""}>${STATUT_CMD_EMOJI[s]} ${s}</option>`).join("")}
+        </select>
+      </td>
+      <td style="font-size:12px;color:#94a3b8;white-space:nowrap;">${c.livraisonPrevue||"—"}</td>
+      <td>
+        <button onclick="editerCommande(${c._index})" style="background:#1e40af;font-size:11px;padding:3px 7px;">✏️</button>
+        <button onclick="supprimerCommande(${c._index})" class="delete-btn" style="font-size:11px;padding:3px 7px;">🗑</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  majCompteursCmds();
 }
 
+function changerStatutCmd(index, statut){
+  if(!commandesFournisseurs[index]) return;
+  commandesFournisseurs[index].statut = statut;
+  saveCommandes();
+  renderCommandes();
+  toast(`Commande mise à jour : ${statut}`);
+}
 
+function ouvrirAjoutCommande(index){
+  const estEdit = index !== undefined && commandesFournisseurs[index];
+  const c = estEdit ? commandesFournisseurs[index] : {};
+  const today = new Date().toISOString().split("T")[0];
+  ouvrirModal(estEdit ? "✏️ Modifier la commande" : "➕ Nouvelle commande fournisseur",
+    `<div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="grid-column:1/-1;">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Pièce / Désignation *</label>
+        <input type="text" id="cmd_design" value="${escHtml(c.designation||"")}" placeholder="Ex: Pare-brise Peugeot 308 2019" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Fournisseur *</label>
+        <input type="text" id="cmd_fourni" value="${escHtml(c.fournisseur||"")}" placeholder="Ex: AD Distribution, Saint-Gobain..." style="width:100%;box-sizing:border-box;" list="listeFournisseursConnus">
+        <datalist id="listeFournisseursConnus">
+          ${[...new Set(commandesFournisseurs.map(x=>x.fournisseur).filter(Boolean))].map(f=>`<option value="${escHtml(f)}">`).join("")}
+          <option value="AD Distribution"><option value="AutoDistribution"><option value="Saint-Gobain Sekurit"><option value="Pilkington"><option value="PGA"><option value="Würth">
+        </datalist>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Référence pièce</label>
+        <input type="text" id="cmd_ref" value="${escHtml(c.reference||"")}" placeholder="Ex: SG-1234567" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Quantité</label>
+        <input type="number" id="cmd_qte" value="${c.quantite||1}" min="1" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Montant HT (€)</label>
+        <input type="number" id="cmd_montant" value="${c.montantHT||""}" step="0.01" placeholder="0.00" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Date commande</label>
+        <input type="date" id="cmd_date" value="${c.date||today}" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Livraison prévue</label>
+        <input type="date" id="cmd_livraison" value="${c.livraisonPrevue||""}" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Statut</label>
+        <select id="cmd_statut" style="width:100%;box-sizing:border-box;">
+          ${["En attente","En cours","Reçue","Annulée"].map(s=>`<option value="${s}" ${(c.statut||"En attente")===s?"selected":""}>${STATUT_CMD_EMOJI[s]} ${s}</option>`).join("")}
+        </select>
+      </div>
+      <div style="grid-column:1/-1;">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Dossier lié (optionnel)</label>
+        <input type="text" id="cmd_dossier" value="${escHtml(c.dossierRef||"")}" placeholder="N° dossier ou nom client" style="width:100%;box-sizing:border-box;">
+      </div>
+      <div style="grid-column:1/-1;">
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Notes</label>
+        <textarea id="cmd_notes" rows="2" style="width:100%;box-sizing:border-box;resize:vertical;">${escHtml(c.notes||"")}</textarea>
+      </div>
+    </div>`,
+    function(){
+      const design = document.getElementById("cmd_design")?.value.trim();
+      const fourni = document.getElementById("cmd_fourni")?.value.trim();
+      if(!design || !fourni){ toast("Désignation et fournisseur obligatoires","error"); return false; }
+      const cmd = {
+        numero:          estEdit ? c.numero : _cmdNextId++,
+        designation:     design,
+        fournisseur:     fourni,
+        reference:       document.getElementById("cmd_ref")?.value.trim()||"",
+        quantite:        parseInt(document.getElementById("cmd_qte")?.value||"1"),
+        montantHT:       parseFloat(document.getElementById("cmd_montant")?.value||"0")||0,
+        date:            document.getElementById("cmd_date")?.value||"",
+        livraisonPrevue: document.getElementById("cmd_livraison")?.value||"",
+        statut:          document.getElementById("cmd_statut")?.value||"En attente",
+        dossierRef:      document.getElementById("cmd_dossier")?.value.trim()||"",
+        notes:           document.getElementById("cmd_notes")?.value.trim()||"",
+        dateCreation:    estEdit ? c.dateCreation : new Date().toISOString()
+      };
+      if(estEdit){ commandesFournisseurs[index] = cmd; }
+      else { commandesFournisseurs.push(cmd); }
+      saveCommandes();
+      renderCommandes();
+      toast(estEdit ? "Commande modifiée ✓" : "Commande ajoutée ✓");
+    }
+  );
+}
+
+function editerCommande(idx){ ouvrirAjoutCommande(idx); }
+
+function supprimerCommande(idx){
+  confirmerAction(`Supprimer la commande CMD-${String(commandesFournisseurs[idx]?.numero||"").padStart(4,"0")} ?`, ()=>{
+    commandesFournisseurs.splice(idx,1);
+    saveCommandes();
+    renderCommandes();
+    toast("Commande supprimée");
+  });
+}
+
+function exporterCommandesCSV(){
+  const lignes = ["N° Cmd;Date;Fournisseur;Désignation;Référence;Qté;Montant HT;Statut;Livraison prévue;Dossier"];
+  commandesFournisseurs.forEach(c=>{
+    lignes.push([
+      `CMD-${String(c.numero).padStart(4,"0")}`,
+      c.date||"", c.fournisseur||"", c.designation||"", c.reference||"",
+      c.quantite||1, (c.montantHT||0).toFixed(2),
+      c.statut||"", c.livraisonPrevue||"", c.dossierRef||""
+    ].join(";"));
+  });
+  const blob = new Blob(["\uFEFF"+lignes.join("\n")], {type:"text/csv;charset=utf-8;"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "commandes-"+new Date().toISOString().split("T")[0]+".csv";
+  a.click();
+  toast("Export CSV téléchargé ✓");
+}
