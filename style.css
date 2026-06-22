@@ -907,3 +907,54 @@ body.theme-light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
 @media(max-width:480px){
   .cards { grid-template-columns: 1fr !important; }
 }
+
+/* =====================================
+   MODULES IA / STOCK / PLANNING
+===================================== */
+
+/* Grille planning */
+#grillePlanning table {
+  border-radius: 10px;
+  overflow: hidden;
+}
+#grillePlanning td:hover {
+  background: rgba(56,189,248,0.05) !important;
+  cursor: pointer;
+}
+
+/* Textarea IA */
+#iaDescription {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  width: 100%;
+  box-sizing: border-box;
+}
+#iaDescription:focus {
+  border-color: #7c3aed;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124,58,237,0.2);
+}
+
+/* Badge stock sidebar */
+#badgeStock {
+  animation: pulse-badge 2s infinite;
+}
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Bouton IA gradient */
+#btnGenererIA:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(124,58,237,0.4);
+}
+#btnGenererIA {
+  transition: all 0.2s ease;
+}

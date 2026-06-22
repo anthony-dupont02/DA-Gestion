@@ -697,6 +697,10 @@ function showPage(pageId){
   if(pageId === "dashboardMecanique") { setTimeout(()=>{ renderDashboardMecanique(); }, 0); }
   if(pageId === "devisFacture") { setTimeout(()=>{ majNumeroDocument(); }, 100); }
   if(pageId === "relancesAssurance") { setTimeout(()=>{ initRelancesAssurance(); }, 0); }
+  // Nouveaux modules
+  if(pageId === "stockPieces")         { setTimeout(()=>{ renderStock(); }, 0); }
+  if(pageId === "planningTechniciens") { setTimeout(()=>{ renderPlanning(); }, 0); }
+  if(pageId === "iaDevis")             { setTimeout(()=>{ remplirVehiculesIA(); majStatsIA(); renderHistoriqueIA(); }, 0); }
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById(pageId);
   if(page) page.classList.remove("hidden");
@@ -5579,4 +5583,674 @@ document.addEventListener("DOMContentLoaded", ()=>{
     nav.appendChild(lienArch);
   }
 });
+
+/* =====================================================================
+   MODULE STOCK DE PIÈCES
+===================================================================== */
+
+let stockPieces = JSON.parse(localStorage.getItem("stockPieces")) || [];
+
+function saveStock(){
+  localStorage.setItem("stockPieces", JSON.stringify(stockPieces));
+  if(db && _firebaseActif){
+    db.ref("/stockPieces").set(stockPieces).catch(e=>console.warn("Erreur save stock:",e));
+  }
+  majCompteursBadgeStock();
+}
+
+function majCompteursBadgeStock(){
+  const rupture = stockPieces.filter(p => p.quantite <= 0).length;
+  const faible  = stockPieces.filter(p => p.quantite > 0 && p.quantite <= p.seuilAlerte).length;
+  const valeur  = stockPieces.reduce((a,p) => a + (p.quantite * (p.prixHT||0)), 0);
+
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  set("stockTotal",   stockPieces.length);
+  set("stockFaible",  faible);
+  set("stockRupture", rupture);
+  set("stockValeur",  valeur.toLocaleString("fr-FR",{minimumFractionDigits:2}) + " €");
+
+  const badge = document.getElementById("badgeStock");
+  if(badge){
+    const nb = rupture + faible;
+    badge.textContent = nb;
+    badge.style.display = nb > 0 ? "" : "none";
+  }
+}
+
+function renderStock(){
+  const tbody = document.getElementById("listeStock");
+  if(!tbody) return;
+
+  const recherche = (document.getElementById("stockRecherche")?.value||"").toLowerCase();
+  const categ     = document.getElementById("stockFiltreCategorie")?.value || "";
+  const alerte    = document.getElementById("stockFiltreAlerte")?.value    || "";
+
+  let liste = stockPieces.filter((p,i) => {
+    p._index = i;
+    const txt = `${p.reference} ${p.designation} ${p.fournisseur||""}`.toLowerCase();
+    if(recherche && !txt.includes(recherche)) return false;
+    if(categ && p.categorie !== categ) return false;
+    if(alerte === "rupture" && p.quantite > 0) return false;
+    if(alerte === "faible"  && !(p.quantite > 0 && p.quantite <= p.seuilAlerte)) return false;
+    if(alerte === "ok"      && p.quantite <= p.seuilAlerte) return false;
+    return true;
+  });
+
+  if(liste.length === 0){
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#64748b;padding:24px;">Aucune pièce trouvée</td></tr>`;
+    majCompteursBadgeStock();
+    return;
+  }
+
+  tbody.innerHTML = liste.map(p => {
+    let statutHtml, rowStyle = "";
+    if(p.quantite <= 0){
+      statutHtml = `<span style="background:#7f1d1d;color:#fca5a5;padding:3px 8px;border-radius:6px;font-size:12px;">🔴 Rupture</span>`;
+      rowStyle = "background:rgba(127,29,29,0.15);";
+    } else if(p.quantite <= p.seuilAlerte){
+      statutHtml = `<span style="background:#78350f;color:#fde68a;padding:3px 8px;border-radius:6px;font-size:12px;">⚠️ Stock faible</span>`;
+      rowStyle = "background:rgba(120,53,15,0.12);";
+    } else {
+      statutHtml = `<span style="background:#14532d;color:#86efac;padding:3px 8px;border-radius:6px;font-size:12px;">✅ OK</span>`;
+    }
+    return `<tr style="${rowStyle}">
+      <td><b style="color:#38bdf8;">${escHtml(p.reference)}</b></td>
+      <td>${escHtml(p.designation)}</td>
+      <td><span style="font-size:12px;background:#1e293b;padding:2px 8px;border-radius:4px;">${escHtml(p.categorie||"—")}</span></td>
+      <td style="text-align:center;font-size:16px;font-weight:bold;color:${p.quantite<=0?"#f87171":p.quantite<=p.seuilAlerte?"#fbbf24":"#34d399"};">${p.quantite}</td>
+      <td style="text-align:center;color:#64748b;">${p.seuilAlerte}</td>
+      <td>${p.prixHT ? p.prixHT.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—"}</td>
+      <td style="color:#94a3b8;font-size:13px;">${escHtml(p.fournisseur||"—")}</td>
+      <td>${statutHtml}</td>
+      <td>
+        <button onclick="modifierStock(${p._index}, 1)"  style="background:#14532d;padding:4px 8px;font-size:12px;">+1</button>
+        <button onclick="modifierStock(${p._index}, -1)" style="background:#7f1d1d;padding:4px 8px;font-size:12px;">-1</button>
+        <button onclick="editerPiece(${p._index})"       style="background:#1e40af;padding:4px 8px;font-size:12px;">✏️</button>
+        <button onclick="supprimerPiece(${p._index})"    class="delete-btn" style="padding:4px 8px;font-size:12px;">🗑</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  majCompteursBadgeStock();
+
+  // Alertes visuelles
+  const zoneAlertes = document.getElementById("alertesStock");
+  if(zoneAlertes){
+    const enRupture = stockPieces.filter(p=>p.quantite<=0);
+    const enFaible  = stockPieces.filter(p=>p.quantite>0 && p.quantite<=p.seuilAlerte);
+    let html = "";
+    if(enRupture.length){
+      html += `<div style="background:#7f1d1d;border:1px solid #dc2626;border-radius:10px;padding:14px 18px;margin-bottom:12px;">
+        <b style="color:#fca5a5;">🔴 Rupture de stock (${enRupture.length} pièce${enRupture.length>1?"s":""}) :</b>
+        <ul style="margin:8px 0 0 16px;color:#fca5a5;font-size:13px;">
+          ${enRupture.map(p=>`<li>${escHtml(p.reference)} — ${escHtml(p.designation)} ${p.fournisseur?`(${escHtml(p.fournisseur)})`:""}. Commander dès que possible.</li>`).join("")}
+        </ul></div>`;
+    }
+    if(enFaible.length){
+      html += `<div style="background:#78350f;border:1px solid #f59e0b;border-radius:10px;padding:14px 18px;">
+        <b style="color:#fde68a;">⚠️ Stock faible (${enFaible.length} pièce${enFaible.length>1?"s":""}) :</b>
+        <ul style="margin:8px 0 0 16px;color:#fde68a;font-size:13px;">
+          ${enFaible.map(p=>`<li>${escHtml(p.reference)} — ${escHtml(p.designation)} : ${p.quantite} restant${p.quantite>1?"s":""} (seuil : ${p.seuilAlerte})</li>`).join("")}
+        </ul></div>`;
+    }
+    zoneAlertes.innerHTML = html;
+  }
+}
+
+function modifierStock(index, delta){
+  if(!stockPieces[index]) return;
+  stockPieces[index].quantite = Math.max(0, (stockPieces[index].quantite||0) + delta);
+  saveStock();
+  renderStock();
+  toast(`Stock mis à jour : ${stockPieces[index].designation} → ${stockPieces[index].quantite}`);
+}
+
+function ouvrirAjoutPiece(index){
+  const estEdit = index !== undefined && stockPieces[index];
+  const p = estEdit ? stockPieces[index] : {};
+  ouvrirModal(estEdit ? "✏️ Modifier la pièce" : "➕ Ajouter une pièce",
+    `<div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Référence *</label>
+          <input type="text" id="sp_ref" value="${escHtml(p.reference||"")}" placeholder="Ex: PB-PEUG308-2019">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Catégorie</label>
+          <select id="sp_categ">
+            ${["Vitrage","Mécanique","Carrosserie","Électrique","Consommable","Autre"].map(c=>`<option value="${c}" ${(p.categorie||"")==c?"selected":""}>${c}</option>`).join("")}
+          </select>
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Désignation *</label>
+          <input type="text" id="sp_design" value="${escHtml(p.designation||"")}" placeholder="Ex: Pare-brise Peugeot 308 2014-2021">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Quantité en stock</label>
+          <input type="number" id="sp_qte" value="${p.quantite||0}" min="0">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Seuil d'alerte</label>
+          <input type="number" id="sp_seuil" value="${p.seuilAlerte||2}" min="0">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Prix HT (€)</label>
+          <input type="number" id="sp_prix" value="${p.prixHT||""}" step="0.01" placeholder="0.00">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Fournisseur</label>
+          <input type="text" id="sp_fourni" value="${escHtml(p.fournisseur||"")}" placeholder="Ex: AD Distribution">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Emplacement / Référence fournisseur</label>
+          <input type="text" id="sp_emplacement" value="${escHtml(p.emplacement||"")}" placeholder="Ex: Étagère B3, Réf. AD 12345">
+        </div>
+      </div>
+    </div>`,
+    function(){
+      const ref = document.getElementById("sp_ref")?.value.trim();
+      const des = document.getElementById("sp_design")?.value.trim();
+      if(!ref || !des){ toast("Référence et désignation obligatoires","error"); return false; }
+      const piece = {
+        reference:   ref,
+        designation: des,
+        categorie:   document.getElementById("sp_categ")?.value || "Autre",
+        quantite:    parseInt(document.getElementById("sp_qte")?.value||"0"),
+        seuilAlerte: parseInt(document.getElementById("sp_seuil")?.value||"2"),
+        prixHT:      parseFloat(document.getElementById("sp_prix")?.value||"0")||0,
+        fournisseur: document.getElementById("sp_fourni")?.value.trim()||"",
+        emplacement: document.getElementById("sp_emplacement")?.value.trim()||"",
+        dateMAJ:     new Date().toISOString().split("T")[0]
+      };
+      if(estEdit){ stockPieces[index] = piece; }
+      else { stockPieces.push(piece); }
+      saveStock();
+      renderStock();
+      toast(estEdit ? "Pièce modifiée ✓" : "Pièce ajoutée ✓");
+    }
+  );
+}
+
+function editerPiece(index){ ouvrirAjoutPiece(index); }
+
+function supprimerPiece(index){
+  confirmerAction(`Supprimer "${stockPieces[index]?.designation}" du stock ?`, ()=>{
+    stockPieces.splice(index,1);
+    saveStock();
+    renderStock();
+    toast("Pièce supprimée");
+  });
+}
+
+function exporterStockCSV(){
+  const lignes = ["Référence;Désignation;Catégorie;Quantité;Seuil;Prix HT;Fournisseur;Emplacement"];
+  stockPieces.forEach(p=>{
+    lignes.push([p.reference,p.designation,p.categorie,p.quantite,p.seuilAlerte,(p.prixHT||0).toFixed(2),p.fournisseur||"",p.emplacement||""].join(";"));
+  });
+  const blob = new Blob(["\uFEFF"+lignes.join("\n")], {type:"text/csv;charset=utf-8;"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "stock-pieces-"+new Date().toISOString().split("T")[0]+".csv";
+  a.click();
+  toast("Export CSV téléchargé ✓");
+}
+
+/* =====================================================================
+   MODULE PLANNING TECHNICIENS
+===================================================================== */
+
+let tachesPlanning = JSON.parse(localStorage.getItem("tachesPlanning")) || [];
+let _semaineOffset = 0;
+
+const COULEURS_TECH = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899","#84cc16"];
+
+function savePlanning(){
+  localStorage.setItem("tachesPlanning", JSON.stringify(tachesPlanning));
+  if(db && _firebaseActif){
+    db.ref("/tachesPlanning").set(tachesPlanning).catch(e=>console.warn("Erreur save planning:",e));
+  }
+}
+
+function getLundiSemaine(offset){
+  const auj = new Date();
+  const jour = auj.getDay() || 7;
+  const lundi = new Date(auj);
+  lundi.setDate(auj.getDate() - jour + 1 + offset * 7);
+  lundi.setHours(0,0,0,0);
+  return lundi;
+}
+
+function semainePrec(){ _semaineOffset--; renderPlanning(); }
+function semaineSuiv(){ _semaineOffset++; renderPlanning(); }
+function semaineAujourd(){ _semaineOffset=0; renderPlanning(); }
+
+function getTechniciens(){
+  const set = new Set();
+  // Récupérer techniciens depuis dossiers mécanique
+  if(typeof dossiersMecanique !== "undefined"){
+    dossiersMecanique.forEach(d=>{ if(d.technicien) set.add(d.technicien); });
+  }
+  tachesPlanning.forEach(t=>{ if(t.technicien) set.add(t.technicien); });
+  if(set.size === 0){ set.add("Anthony"); }
+  return Array.from(set).sort();
+}
+
+function couleurTech(nom){
+  const techs = getTechniciens();
+  return COULEURS_TECH[techs.indexOf(nom) % COULEURS_TECH.length] || "#64748b";
+}
+
+function renderPlanning(){
+  const lundi = getLundiSemaine(_semaineOffset);
+  const jours = [];
+  const nomsJours = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  for(let i=0; i<6; i++){
+    const d = new Date(lundi);
+    d.setDate(lundi.getDate() + i);
+    jours.push(d);
+  }
+
+  const label = document.getElementById("labelSemaine");
+  if(label){
+    const fin = jours[5];
+    label.textContent = `Semaine du ${lundi.toLocaleDateString("fr-FR",{day:"numeric",month:"long"})} au ${fin.toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})}`;
+  }
+
+  const techs = getTechniciens();
+
+  // Légende
+  const legend = document.getElementById("legendeTechniciens");
+  if(legend){
+    legend.innerHTML = techs.map(t=>`
+      <div style="display:flex;align-items:center;gap:6px;background:#1e293b;padding:5px 12px;border-radius:6px;border-left:3px solid ${couleurTech(t)};">
+        <span style="width:10px;height:10px;border-radius:50%;background:${couleurTech(t)};display:inline-block;"></span>
+        <span style="font-size:13px;">${escHtml(t)}</span>
+      </div>`).join("");
+  }
+
+  // Grille
+  const grille = document.getElementById("grillePlanning");
+  if(!grille) return;
+
+  const auj = new Date(); auj.setHours(0,0,0,0);
+
+  let html = `<table style="width:100%;border-collapse:collapse;min-width:600px;">
+    <thead><tr>
+      <th style="background:#0f172a;padding:10px;font-size:13px;color:#94a3b8;width:80px;text-align:left;">Technicien</th>
+      ${jours.map((d,i)=>{
+        const estAuj = d.getTime()===auj.getTime();
+        return `<th style="background:${estAuj?"#1e3a5f":"#0f172a"};padding:10px 8px;font-size:13px;color:${estAuj?"#38bdf8":"#94a3b8"};border-left:1px solid #1e293b;text-align:center;">
+          <div style="font-weight:bold;">${nomsJours[i]}</div>
+          <div style="font-size:11px;color:#64748b;">${d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</div>
+        </th>`;
+      }).join("")}
+    </tr></thead>
+    <tbody>`;
+
+  techs.forEach(tech=>{
+    html += `<tr>
+      <td style="padding:8px;font-size:13px;font-weight:bold;color:${couleurTech(tech)};border-top:1px solid #1e293b;vertical-align:top;white-space:nowrap;">
+        ${escHtml(tech)}
+      </td>`;
+    jours.forEach(d=>{
+      const dateStr = d.toISOString().split("T")[0];
+      const taches = tachesPlanning.filter(t => t.technicien===tech && t.date===dateStr);
+      const estAuj = d.getTime()===auj.getTime();
+      html += `<td style="padding:4px;border-left:1px solid #1e293b;border-top:1px solid #1e293b;vertical-align:top;min-height:60px;background:${estAuj?"rgba(56,189,248,0.04)":""};" onclick="ouvrirAjoutTache('${tech}','${dateStr}')">`;
+      taches.forEach((t,ti)=>{
+        const idx = tachesPlanning.indexOf(t);
+        html += `<div style="background:${couleurTech(tech)}22;border-left:3px solid ${couleurTech(tech)};border-radius:4px;padding:4px 6px;margin-bottom:3px;font-size:11px;cursor:pointer;position:relative;" onclick="event.stopPropagation();voirTache(${idx})">
+          <div style="font-weight:bold;color:${couleurTech(tech)};">${t.heureDebut||""}${t.heureFin?" - "+t.heureFin:""}</div>
+          <div style="color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;">${escHtml(t.titre)}</div>
+          <button onclick="event.stopPropagation();supprimerTache(${idx})" style="position:absolute;top:2px;right:2px;background:transparent;border:none;color:#64748b;padding:0;font-size:10px;cursor:pointer;">✖</button>
+        </div>`;
+      });
+      html += `<div style="text-align:center;color:#1e3a5f;font-size:18px;line-height:2;cursor:pointer;" onclick="ouvrirAjoutTache('${tech}','${dateStr}')">+</div>`;
+      html += `</td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  grille.innerHTML = html;
+}
+
+function voirTache(index){
+  const t = tachesPlanning[index];
+  if(!t) return;
+  ouvrirModal(`📋 Tâche — ${escHtml(t.technicien)}`,
+    `<div style="display:flex;flex-direction:column;gap:10px;font-size:14px;">
+      <p><b>Titre :</b> ${escHtml(t.titre)}</p>
+      <p><b>Date :</b> ${new Date(t.date+"T00:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
+      <p><b>Horaire :</b> ${escHtml(t.heureDebut||"—")} → ${escHtml(t.heureFin||"—")}</p>
+      ${t.description ? `<p><b>Détail :</b> ${escHtml(t.description)}</p>` : ""}
+      ${t.dossierRef ? `<p><b>Dossier :</b> ${escHtml(t.dossierRef)}</p>` : ""}
+      <p><b>Type :</b> <span style="background:#1e293b;padding:2px 8px;border-radius:4px;">${escHtml(t.type||"Intervention")}</span></p>
+    </div>`,
+    null
+  );
+  setTimeout(()=>{ const btn=document.getElementById("modalBtnOk"); if(btn) btn.style.display="none"; },50);
+}
+
+function ouvrirAjoutTache(techPrefill, datePrefill){
+  const techs = getTechniciens();
+  const lundi = getLundiSemaine(_semaineOffset);
+  const dateDefaut = datePrefill || lundi.toISOString().split("T")[0];
+  ouvrirModal("➕ Ajouter une tâche au planning",
+    `<div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Titre *</label>
+          <input type="text" id="pt_titre" placeholder="Ex: Remplacement courroie de distribution" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Technicien *</label>
+          <select id="pt_tech" style="width:100%;box-sizing:border-box;">
+            ${techs.map(t=>`<option value="${escHtml(t)}" ${t===(techPrefill||"")?"selected":""}>${escHtml(t)}</option>`).join("")}
+            <option value="__nouveau__">➕ Nouveau technicien...</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Date *</label>
+          <input type="date" id="pt_date" value="${dateDefaut}" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Heure début</label>
+          <input type="time" id="pt_hdebut" value="08:00" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Heure fin</label>
+          <input type="time" id="pt_hfin" value="12:00" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Type</label>
+          <select id="pt_type" style="width:100%;box-sizing:border-box;">
+            <option>Intervention</option>
+            <option>Révision</option>
+            <option>Vitrage</option>
+            <option>Expertise</option>
+            <option>Livraison</option>
+            <option>Formation</option>
+            <option>Absence</option>
+            <option>Congé</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Référence dossier</label>
+          <input type="text" id="pt_dossier" placeholder="N° dossier lié (optionnel)" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Description</label>
+          <textarea id="pt_desc" rows="2" placeholder="Détails de l'intervention..." style="width:100%;box-sizing:border-box;resize:vertical;"></textarea>
+        </div>
+      </div>
+    </div>`,
+    function(){
+      let tech = document.getElementById("pt_tech")?.value;
+      if(tech === "__nouveau__"){
+        tech = prompt("Nom du nouveau technicien :");
+        if(!tech) return false;
+      }
+      const titre = document.getElementById("pt_titre")?.value.trim();
+      const date  = document.getElementById("pt_date")?.value;
+      if(!titre || !date || !tech){ toast("Titre, technicien et date obligatoires","error"); return false; }
+      tachesPlanning.push({
+        titre,
+        technicien: tech,
+        date,
+        heureDebut:  document.getElementById("pt_hdebut")?.value||"",
+        heureFin:    document.getElementById("pt_hfin")?.value||"",
+        type:        document.getElementById("pt_type")?.value||"Intervention",
+        dossierRef:  document.getElementById("pt_dossier")?.value.trim()||"",
+        description: document.getElementById("pt_desc")?.value.trim()||"",
+        dateCreation: new Date().toISOString()
+      });
+      savePlanning();
+      renderPlanning();
+      toast("Tâche ajoutée au planning ✓");
+    }
+  );
+}
+
+function supprimerTache(index){
+  confirmerAction(`Supprimer la tâche "${tachesPlanning[index]?.titre}" ?`, ()=>{
+    tachesPlanning.splice(index,1);
+    savePlanning();
+    renderPlanning();
+    toast("Tâche supprimée");
+  });
+}
+
+/* =====================================================================
+   MODULE IA DEVIS AUTOMATIQUE
+===================================================================== */
+
+let iaDevisHistorique = JSON.parse(localStorage.getItem("iaDevisHistorique")) || [];
+let iaLignesGenerees = [];
+
+function exempleIA(texte){
+  const el = document.getElementById("iaDescription");
+  if(el){ el.value = texte; el.focus(); }
+}
+
+function viderIADevis(){
+  const el = document.getElementById("iaDescription");
+  if(el) el.value = "";
+  document.getElementById("iaResultat").style.display = "none";
+  iaLignesGenerees = [];
+}
+
+function remplirVehiculesIA(){
+  const sel = document.getElementById("iaVehiculeRef");
+  if(!sel) return;
+  sel.innerHTML = `<option value="">Sélectionner un véhicule (optionnel)...</option>`;
+  vehicules.forEach((v,i)=>{
+    const client = clients.find(c=>`${c.nom} ${c.prenom||""}`.trim()===v.proprietaire) || {};
+    sel.innerHTML += `<option value="${i}">${escHtml(v.marque||"")} ${escHtml(v.modele||"")} ${escHtml(v.immat||"")} ${v.proprietaire?`— ${escHtml(v.proprietaire)}`:""}</option>`;
+  });
+}
+
+async function genererDevisIA(){
+  const description = document.getElementById("iaDescription")?.value.trim();
+  if(!description || description.length < 10){ toast("Veuillez décrire l'intervention (min. 10 caractères)","error"); return; }
+
+  const module = document.getElementById("iaModuleType")?.value || "mecanique";
+  const idxVeh = document.getElementById("iaVehiculeRef")?.value;
+  const vehiculeInfo = (idxVeh !== "" && vehicules[idxVeh])
+    ? `Véhicule : ${vehicules[idxVeh].marque||""} ${vehicules[idxVeh].modele||""}, Immat : ${vehicules[idxVeh].immat||""}, Année : ${vehicules[idxVeh].annee||""}`
+    : "";
+
+  const btn = document.getElementById("btnGenererIA");
+  if(btn){ btn.disabled = true; btn.textContent = "⏳ Génération en cours..."; }
+
+  const debut = Date.now();
+
+  const prompt = `Tu es un expert en réparation automobile et vitrage en France. 
+Tu dois générer un devis détaillé pour un garage automobile.
+
+Module : ${module === "vitrage" ? "Vitrage / Bris de glace" : module === "carrosserie" ? "Carrosserie" : "Mécanique automobile"}
+${vehiculeInfo ? vehiculeInfo : ""}
+
+Demande client : "${description}"
+
+Génère un devis avec les lignes de travaux/pièces. 
+Retourne UNIQUEMENT un JSON valide avec ce format exact (sans markdown, sans backticks) :
+{
+  "lignes": [
+    {"designation": "Nom de la prestation ou pièce", "quantite": 1, "prixUnitaireHT": 120.00, "tva": 20},
+    ...
+  ],
+  "commentaire": "Remarques ou recommandations du technicien (1-2 phrases)"
+}
+
+Règles :
+- Prix en euros HT réalistes pour un garage en France en 2024
+- TVA 20% pour pièces et main d'oeuvre, 10% pour certains travaux si applicable
+- Séparer la main d'oeuvre des pièces
+- Maximum 8 lignes
+- Désignations claires et professionnelles en français
+- Quantités réalistes`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const texte = data.content?.map(b=>b.text||"").join("") || "";
+
+    let json;
+    try {
+      const clean = texte.replace(/```json|```/g,"").trim();
+      json = JSON.parse(clean);
+    } catch(e){
+      toast("Erreur de format IA — réessayez","error");
+      console.warn("Réponse IA brute :", texte);
+      return;
+    }
+
+    const duree = ((Date.now()-debut)/1000).toFixed(1)+"s";
+    iaLignesGenerees = json.lignes || [];
+    afficherResultatIA(json, description, duree);
+
+    // Historique
+    iaDevisHistorique.unshift({
+      date: new Date().toISOString(),
+      description: description.substring(0,80)+"...",
+      module,
+      nbLignes: iaLignesGenerees.length,
+      totalTTC: iaLignesGenerees.reduce((a,l)=>a+l.quantite*l.prixUnitaireHT*(1+l.tva/100),0),
+      duree
+    });
+    if(iaDevisHistorique.length > 20) iaDevisHistorique.pop();
+    localStorage.setItem("iaDevisHistorique", JSON.stringify(iaDevisHistorique));
+    majStatsIA();
+    renderHistoriqueIA();
+
+  } catch(err){
+    toast("Erreur de connexion à l'IA","error");
+    console.error(err);
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent="🤖 Générer le devis avec l'IA"; }
+  }
+}
+
+function afficherResultatIA(json, description, duree){
+  const lignes = json.lignes || [];
+  let totalHT = 0, totalTVA = 0;
+
+  const html = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:#0f172a;">
+        <th style="padding:10px;text-align:left;">Désignation</th>
+        <th style="padding:10px;text-align:center;width:60px;">Qté</th>
+        <th style="padding:10px;text-align:right;width:110px;">Prix HT</th>
+        <th style="padding:10px;text-align:center;width:60px;">TVA</th>
+        <th style="padding:10px;text-align:right;width:110px;">Total TTC</th>
+      </tr></thead>
+      <tbody>
+        ${lignes.map(l=>{
+          const ht = l.quantite * l.prixUnitaireHT;
+          const tva = ht * (l.tva/100);
+          totalHT += ht; totalTVA += tva;
+          return `<tr style="border-bottom:1px solid #1e293b;">
+            <td style="padding:10px;">${escHtml(l.designation)}</td>
+            <td style="padding:10px;text-align:center;">${l.quantite}</td>
+            <td style="padding:10px;text-align:right;">${l.prixUnitaireHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
+            <td style="padding:10px;text-align:center;color:#94a3b8;">${l.tva}%</td>
+            <td style="padding:10px;text-align:right;font-weight:bold;">${(ht+tva).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    <p style="font-size:11px;color:#475569;margin-top:8px;text-align:right;">⏱ Généré en ${duree}</p>`;
+
+  const totalTTC = totalHT + totalTVA;
+  document.getElementById("iaLignesResultat").innerHTML = html;
+  document.getElementById("iaTotalHT").textContent  = totalHT.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €";
+  document.getElementById("iaTotalTVA").textContent = totalTVA.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €";
+  document.getElementById("iaTotalTTC").textContent = totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €";
+
+  const zoneComm = document.getElementById("iaCommentaireIA");
+  if(json.commentaire && zoneComm){
+    zoneComm.textContent = "💬 " + json.commentaire;
+    zoneComm.style.display = "";
+  }
+
+  document.getElementById("iaResultat").style.display = "";
+  document.getElementById("iaResultat").scrollIntoView({behavior:"smooth"});
+  toast("Devis généré avec succès ✓");
+}
+
+function envoyerDevisVersModule(){
+  if(!iaLignesGenerees || iaLignesGenerees.length === 0){ toast("Aucune ligne à envoyer","error"); return; }
+  // Injecter dans le module Devis/Factures
+  lignesDocument = iaLignesGenerees.map(l=>({
+    design: l.designation,
+    qte: l.quantite,
+    prixHT: l.prixUnitaireHT,
+    tva: l.tva
+  }));
+  showPage("devisFacture");
+  setTimeout(()=>{
+    if(typeof renderLignes === "function") renderLignes();
+    toast("Lignes envoyées vers Devis/Factures ✓");
+  }, 200);
+}
+
+function copierDevisIA(){
+  const lignes = iaLignesGenerees.map(l=>`${l.designation} — ${l.quantite} x ${l.prixUnitaireHT.toFixed(2)} € HT`).join("\n");
+  navigator.clipboard.writeText(lignes).then(()=>toast("Devis copié dans le presse-papier ✓")).catch(()=>toast("Copie non disponible","error"));
+}
+
+function majStatsIA(){
+  const total = iaDevisHistorique.length;
+  const montantMoyen = total > 0 ? iaDevisHistorique.reduce((a,h)=>a+(h.totalTTC||0),0)/total : 0;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  set("iaStatTotal", total);
+  set("iaStatMontant", total > 0 ? montantMoyen.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €" : "—");
+}
+
+function renderHistoriqueIA(){
+  const zone = document.getElementById("iaHistorique");
+  if(!zone) return;
+  if(iaDevisHistorique.length === 0){ zone.innerHTML = `<p style="color:#64748b;font-size:13px;">Aucun devis généré pour l'instant.</p>`; return; }
+  zone.innerHTML = `<div class="table-wrapper"><table style="font-size:13px;">
+    <thead><tr>
+      <th>Date</th><th>Description</th><th>Module</th><th>Lignes</th><th>Total TTC</th><th>Durée</th>
+    </tr></thead>
+    <tbody>
+      ${iaDevisHistorique.map(h=>`<tr>
+        <td style="white-space:nowrap;">${new Date(h.date).toLocaleDateString("fr-FR",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td>
+        <td style="color:#94a3b8;font-size:12px;">${escHtml(h.description)}</td>
+        <td><span style="background:#1e293b;padding:2px 8px;border-radius:4px;font-size:12px;">${escHtml(h.module)}</span></td>
+        <td style="text-align:center;">${h.nbLignes}</td>
+        <td style="font-weight:bold;color:#34d399;">${(h.totalTTC||0).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
+        <td style="color:#64748b;font-size:12px;">${h.duree||"—"}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table></div>`;
+}
+
+/* =====================================================================
+   INTÉGRATION FIREBASE POUR LES NOUVEAUX MODULES
+===================================================================== */
+
+// Chargement Firebase pour les nouveaux modules (appelé manuellement après initFirebase)
+async function chargerNouveauxModulesFirebase(){
+  if(!db) return;
+  try {
+    const snap = await db.ref("/stockPieces").get();
+    if(snap.exists()){ stockPieces = Object.values(snap.val()); localStorage.setItem("stockPieces", JSON.stringify(stockPieces)); }
+    const snap2 = await db.ref("/tachesPlanning").get();
+    if(snap2.exists()){ tachesPlanning = Object.values(snap2.val()); localStorage.setItem("tachesPlanning", JSON.stringify(tachesPlanning)); }
+  } catch(e){ console.warn("Erreur chargement nouveaux modules Firebase:", e); }
+}
+
 

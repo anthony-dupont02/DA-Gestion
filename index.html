@@ -50,6 +50,11 @@
       <a href="#" onclick="showPage('entreprise');setActive(this)">⚙ Entreprise</a>
       <a href="#" id="lienAdmin" onclick="showPage('administration');setActive(this)" style="display:none;border-top:1px solid #1e3a5f;margin-top:8px;padding-top:12px;color:#a78bfa;">🔑 Administration</a>
 
+      <div class="nav-section-label">🆕 NOUVELLES FONCTIONS</div>
+      <a href="#" onclick="showPage('stockPieces');setActive(this)">📦 Stock de pièces <span id="badgeStock" style="background:#dc2626;color:#fff;border-radius:9999px;padding:1px 7px;font-size:11px;margin-left:4px;font-weight:bold;display:none;"></span></a>
+      <a href="#" onclick="showPage('planningTechniciens');setActive(this)">👷 Planning techniciens</a>
+      <a href="#" onclick="showPage('iaDevis');setActive(this)">🤖 IA Devis auto</a>
+
       <div class="nav-section-label">⚙ OUTILS</div>
       <a href="#" id="btnTheme" onclick="toggleTheme();return false;">☀️ Mode clair</a>
       <a href="#" onclick="exporterExcelGlobal();return false;">📊 Export Excel</a>
@@ -1104,6 +1109,180 @@
         </div>
       </div>
 
+    </section>
+
+    <!-- ========== STOCK DE PIÈCES ========== -->
+    <section id="stockPieces" class="page hidden">
+      <h2>📦 Gestion du stock de pièces</h2>
+
+      <div class="cards" style="margin-bottom:20px;">
+        <div class="card compteur-card" style="border-top:3px solid #38bdf8;">
+          <h3>Total références</h3>
+          <span id="stockTotal" style="color:#38bdf8;">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #f59e0b;">
+          <h3>⚠️ Stock faible</h3>
+          <span id="stockFaible" style="color:#f59e0b;">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #dc2626;">
+          <h3>🔴 Rupture</h3>
+          <span id="stockRupture" style="color:#dc2626;">0</span>
+        </div>
+        <div class="card compteur-card" style="border-top:3px solid #16a34a;">
+          <h3>💰 Valeur stock</h3>
+          <span id="stockValeur" style="color:#16a34a;font-size:18px;">0 €</span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+        <input type="text" id="stockRecherche" placeholder="🔍 Rechercher une pièce..." oninput="renderStock()" style="min-width:220px;">
+        <select id="stockFiltreCategorie" onchange="renderStock()" style="min-width:160px;">
+          <option value="">Toutes catégories</option>
+          <option value="Vitrage">🪟 Vitrage</option>
+          <option value="Mécanique">🔩 Mécanique</option>
+          <option value="Carrosserie">🚗 Carrosserie</option>
+          <option value="Électrique">⚡ Électrique</option>
+          <option value="Consommable">🧴 Consommable</option>
+          <option value="Autre">📦 Autre</option>
+        </select>
+        <select id="stockFiltreAlerte" onchange="renderStock()" style="min-width:160px;">
+          <option value="">Tous les niveaux</option>
+          <option value="rupture">🔴 Rupture uniquement</option>
+          <option value="faible">⚠️ Stock faible</option>
+          <option value="ok">✅ Stock OK</option>
+        </select>
+        <button onclick="ouvrirAjoutPiece()" class="btn-success">➕ Ajouter une pièce</button>
+        <button onclick="exporterStockCSV()" style="background:#0891b2;">📊 Export CSV</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Référence</th>
+              <th>Désignation</th>
+              <th>Catégorie</th>
+              <th>Qté en stock</th>
+              <th>Seuil alerte</th>
+              <th>Prix HT</th>
+              <th>Fournisseur</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="listeStock"></tbody>
+        </table>
+      </div>
+
+      <!-- Alertes rupture -->
+      <div id="alertesStock" style="margin-top:20px;"></div>
+    </section>
+
+    <!-- ========== PLANNING TECHNICIENS ========== -->
+    <section id="planningTechniciens" class="page hidden">
+      <h2>👷 Planning techniciens</h2>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+        <button onclick="semainePrec()" style="background:#334155;">◀ Semaine préc.</button>
+        <span id="labelSemaine" style="font-size:15px;font-weight:bold;color:#38bdf8;min-width:220px;text-align:center;"></span>
+        <button onclick="semaineSuiv()" style="background:#334155;">Semaine suiv. ▶</button>
+        <button onclick="semaineAujourd()">📅 Aujourd'hui</button>
+        <button onclick="ouvrirAjoutTache()" class="btn-success">➕ Nouvelle tâche</button>
+      </div>
+
+      <!-- Légende techniciens -->
+      <div id="legendeTechniciens" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;"></div>
+
+      <!-- Grille planning -->
+      <div id="grillePlanning" style="overflow-x:auto;"></div>
+
+      <!-- Tâches du jour détail -->
+      <div id="detailPlanning" style="margin-top:20px;"></div>
+    </section>
+
+    <!-- ========== IA DEVIS AUTOMATIQUE ========== -->
+    <section id="iaDevis" class="page hidden">
+      <h2>🤖 IA — Génération de devis automatique</h2>
+
+      <div class="cards" style="margin-bottom:20px;">
+        <div class="card" style="flex:2;">
+          <h3 style="color:#a78bfa;margin-bottom:12px;">📝 Décrire la demande client</h3>
+          <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">Décrivez la panne, le sinistre ou l'intervention en langage naturel. L'IA génère automatiquement les lignes du devis.</p>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <select id="iaModuleType" style="min-width:160px;">
+              <option value="mecanique">🔩 Mécanique</option>
+              <option value="vitrage">🪟 Vitrage</option>
+              <option value="carrosserie">🚗 Carrosserie</option>
+            </select>
+            <select id="iaVehiculeRef" style="min-width:200px;">
+              <option value="">Sélectionner un véhicule...</option>
+            </select>
+          </div>
+
+          <textarea id="iaDescription" rows="5" placeholder="Ex : Le client signale un bruit de claquement en tournant à gauche, usure des plaquettes avant, vidange moteur à faire, filtre à huile. Véhicule Peugeot 308 2019 90 000 km..."
+            style="width:100%;box-sizing:border-box;resize:vertical;font-size:14px;"></textarea>
+
+          <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center;">
+            <button onclick="genererDevisIA()" class="btn-success" id="btnGenererIA" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);font-size:14px;padding:10px 20px;">
+              🤖 Générer le devis avec l'IA
+            </button>
+            <button onclick="viderIADevis()" style="background:#334155;">🗑 Effacer</button>
+          </div>
+
+          <!-- Exemples rapides -->
+          <div style="margin-top:14px;">
+            <p style="font-size:12px;color:#64748b;margin-bottom:6px;">💡 Exemples rapides :</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="exempleIA('Remplacement pare-brise fissuré + recalibrage caméra')" style="background:#0f172a;border:1px solid #334155;font-size:12px;padding:5px 10px;">🪟 Pare-brise</button>
+              <button onclick="exempleIA('Révision complète 60 000 km : vidange, filtres air huile habitacle, bougies, courroie accessoire')" style="background:#0f172a;border:1px solid #334155;font-size:12px;padding:5px 10px;">🔩 Révision</button>
+              <button onclick="exempleIA('Remplacement plaquettes et disques de frein avant, purge liquide de frein')" style="background:#0f172a;border:1px solid #334155;font-size:12px;padding:5px 10px;">🛑 Freins</button>
+              <button onclick="exempleIA('Diagnostic électronique, remplacement batterie 12V, test alternateur')" style="background:#0f172a;border:1px solid #334155;font-size:12px;padding:5px 10px;">⚡ Électrique</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="flex:1;min-width:260px;">
+          <h3 style="color:#34d399;margin-bottom:12px;">📊 Statistiques IA</h3>
+          <p style="font-size:13px;color:var(--muted);line-height:1.9;">
+            🤖 Devis générés : <b id="iaStatTotal">0</b><br>
+            ⏱ Temps moyen : <b id="iaStatTemps">—</b><br>
+            💰 Montant moyen : <b id="iaStatMontant">—</b>
+          </p>
+          <div style="margin-top:16px;padding:12px;background:#0f172a;border-radius:8px;border:1px solid #1e293b;">
+            <p style="font-size:12px;color:#64748b;margin:0 0 6px 0;">🔑 Modèle IA utilisé</p>
+            <p style="font-size:13px;color:#a78bfa;margin:0;">Claude Sonnet (Anthropic)</p>
+            <p style="font-size:11px;color:#475569;margin-top:4px;">Spécialisé automobile FR</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zone résultat IA -->
+      <div id="iaResultat" style="display:none;">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <h3 style="color:#38bdf8;margin:0;">📋 Devis généré par l'IA</h3>
+            <div style="display:flex;gap:8px;">
+              <button onclick="envoyerDevisVersModule()" class="btn-success">📤 Envoyer vers Devis/Factures</button>
+              <button onclick="copierDevisIA()" style="background:#334155;">📋 Copier</button>
+              <button onclick="document.getElementById('iaResultat').style.display='none'" style="background:#7f1d1d;">✖ Fermer</button>
+            </div>
+          </div>
+          <div id="iaLignesResultat"></div>
+          <div style="margin-top:16px;padding:12px 16px;background:#0f172a;border-radius:8px;display:flex;gap:20px;flex-wrap:wrap;">
+            <span>Total HT : <b id="iaTotalHT" style="color:#38bdf8;">0,00 €</b></span>
+            <span>TVA 20% : <b id="iaTotalTVA" style="color:#94a3b8;">0,00 €</b></span>
+            <span>Total TTC : <b id="iaTotalTTC" style="color:#34d399;font-size:16px;">0,00 €</b></span>
+          </div>
+          <div id="iaCommentaireIA" style="margin-top:12px;padding:12px;background:#1e293b;border-radius:8px;border-left:3px solid #a78bfa;font-size:13px;color:#cbd5e1;display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Historique IA -->
+      <div class="card" style="margin-top:0;">
+        <h3>📜 Historique des devis IA</h3>
+        <div id="iaHistorique" style="color:var(--muted);font-size:13px;">Aucun devis généré pour l'instant.</div>
+      </div>
     </section>
 
   </main>
