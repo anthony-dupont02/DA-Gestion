@@ -692,15 +692,13 @@ function fermerRecherche(){
 
 function showPage(pageId){
   if(pageId === "administration") renderAdministration();
-  if(pageId === "agenda") { renderCalendrierRdv(); renderRendezVous(); renderCalendrierMensuel(); }
+  if(pageId === "agenda") { renderCalendrierRdv(); renderRendezVous(); renderCalendrierMensuel(); setTimeout(()=>{ renderPlanning(); }, 0); }
   if(pageId === "mecanique") { setTimeout(()=>{ renderDossiersMecanique(); majCompteursMecanique(); remplirTarifsMecanique(); }, 0); }
   if(pageId === "dashboardMecanique") { setTimeout(()=>{ renderDashboardMecanique(); }, 0); }
-  if(pageId === "devisFacture") { setTimeout(()=>{ majNumeroDocument(); }, 100); }
+  if(pageId === "devisFacture") { setTimeout(()=>{ majNumeroDocument(); renderCatalogue(); renderCommandes(); majCompteursCmds(); renderCalc(); }, 100); }
   if(pageId === "relancesAssurance") { setTimeout(()=>{ initRelancesAssurance(); }, 0); }
   // Nouveaux modules
   if(pageId === "stockPieces")         { setTimeout(()=>{ renderStock(); }, 0); }
-  if(pageId === "planningTechniciens") { setTimeout(()=>{ renderPlanning(); }, 0); }
-  if(pageId === "outilsRapides")       { setTimeout(()=>{ renderCatalogue(); renderCommandes(); renderCalc(); majCompteursCmds(); }, 0); }
   document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
   const page = document.getElementById(pageId);
   if(page) page.classList.remove("hidden");
@@ -2543,6 +2541,7 @@ function renderLignes(){
   setEl("totalHT",  fmt(totalHT));
   setEl("totalTVA", fmt(totalTVA));
   setEl("totalTTC", fmt(totalTTC));
+  majAffichageMarge();
 }
 
 function resetDocument(){
@@ -2775,7 +2774,7 @@ let documents = JSON.parse(localStorage.getItem("documents")) || [];
 
 function genererNumeroDocument(type){
   const annee = new Date().getFullYear();
-  const prefix = type === "facture" ? "FAC" : "DEV";
+  const prefix = type === "facture" ? "FAC" : type === "or" ? "OR" : "DEV";
   const existants = documents.filter(d => d.id && d.id.startsWith(prefix + "-" + annee));
   const max = existants.reduce((acc, d) => {
     const num = parseInt((d.id||"").split("-").pop()) || 0;
@@ -2806,13 +2805,23 @@ function sauvegarderDocument(){
     totalTVA += ht * l.tva / 100;
   });
 
+  const coutAchat = parseFloat(document.getElementById("coutAchatPieces")?.value||"0")||0;
+  const margeHT   = totalHT - coutAchat;
+  const margePct  = totalHT > 0 ? (margeHT / totalHT * 100) : 0;
+
   const doc = {
     id: genererNumeroDocument(type),
     type, titre, date, technicien,
     dossierIdx: dossierIdx !== "" ? Number(dossierIdx) : null,
     dossierNumero: dossierIdx !== "" ? (dossiers[Number(dossierIdx)]?.numero||"") : "",
     lignes: [...lignesDocument],
-    totalHT, totalTVA, totalTTC: totalHT + totalTVA
+    totalHT, totalTVA, totalTTC: totalHT + totalTVA,
+    coutAchat, margeHT, margePct,
+    // Règlement
+    statutReglement: type === "facture" ? "Non réglé" : "—",
+    modePaiement: "",
+    dateReglement: "",
+    montantRegle: 0
   };
 
   documents.push(doc);
@@ -2842,6 +2851,9 @@ function chargerDocument(i){
   set("titreDocument",      doc.titre);
   set("typeDocument",       doc.type);
   set("dateDocument",       doc.date);
+
+  // Charger coût achat et marge
+  const caEl = document.getElementById("coutAchatPieces"); if(caEl) caEl.value = doc.coutAchat||"";
   set("technicienDocument", doc.technicien||"");
 
   // Restaurer le dossier rattaché
@@ -2979,21 +2991,86 @@ document.addEventListener("change", function(e){
 function renderDocuments(){
   const tbody = document.getElementById("listeDocuments");
   if(!tbody) return;
-  tbody.innerHTML = documents.map((doc,i)=>`
-    <tr>
-      <td>${escHtml(doc.date)}</td>
-      <td><span class="badge badge-${doc.type}">${doc.type==="devis"?"Devis":"Facture"}</span></td>
+
+  const filtreType     = document.getElementById("filtreTypeDoc")?.value     || "";
+  const filtreReglement= document.getElementById("filtreReglementDoc")?.value || "";
+
+  const liste = documents.map((doc,i)=>({...doc, _i:i})).filter(doc=>{
+    if(filtreType && doc.type !== filtreType) return false;
+    if(filtreReglement && (doc.statutReglement||"—") !== filtreReglement) return false;
+    return true;
+  });
+
+  // Résumé chiffres clés
+  const resume = document.getElementById("resumeDocuments");
+  if(resume){
+    const factures   = documents.filter(d=>d.type==="facture");
+    const totalFactu = factures.reduce((a,d)=>a+(d.totalTTC||0),0);
+    const nonRegle   = factures.filter(d=>d.statutReglement==="Non réglé").reduce((a,d)=>a+(d.totalTTC||0),0);
+    const totalMarge = factures.reduce((a,d)=>a+(d.margeHT||0),0);
+    resume.innerHTML = [
+      { label:"CA Facturé", val: totalFactu.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €", color:"#38bdf8" },
+      { label:"Impayés",    val: nonRegle.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €",   color:"#f87171" },
+      { label:"Marge brute",val: totalMarge.toLocaleString("fr-FR",{minimumFractionDigits:2})+" €", color:"#34d399" },
+      { label:"Documents",  val: documents.length,                                                   color:"#94a3b8" },
+    ].map(k=>`<div style="background:#1e293b;border-radius:8px;padding:8px 14px;border-top:2px solid ${k.color};">
+      <div style="font-size:11px;color:#64748b;">${k.label}</div>
+      <div style="font-size:15px;font-weight:bold;color:${k.color};">${k.val}</div>
+    </div>`).join("");
+  }
+
+  if(liste.length === 0){
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#64748b;padding:20px;">Aucun document trouvé</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = liste.map(doc=>{
+    const i = doc._i;
+    const typeLabel = doc.type==="devis" ? "Devis" : doc.type==="or" ? "OR" : "Facture";
+    const typeBadge = doc.type==="or" ? "background:#7c3aed;" : doc.type==="facture" ? "background:#0f766e;" : "background:#1e40af;";
+
+    // Marge
+    let margeHtml = "<span style='color:#64748b;font-size:12px;'>—</span>";
+    if(doc.type==="facture" && doc.margeHT !== undefined){
+      const pct = doc.margePct||0;
+      const color = pct >= 40 ? "#34d399" : pct >= 20 ? "#f59e0b" : "#f87171";
+      margeHtml = `<span style="color:${color};font-weight:bold;">${doc.margeHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</span><br>
+        <span style="font-size:11px;color:${color};">${pct.toFixed(1)}%</span>`;
+    }
+
+    // Règlement
+    let reglHtml;
+    if(doc.type !== "facture"){
+      reglHtml = `<span style="color:#64748b;font-size:12px;">—</span>`;
+    } else {
+      const st = doc.statutReglement || "Non réglé";
+      const stColor = st==="Réglé" ? "#34d399" : st==="Partiel" ? "#f59e0b" : "#f87171";
+      const stEmoji = st==="Réglé" ? "✅" : st==="Partiel" ? "⚠️" : "❌";
+      reglHtml = `<div>
+        <span style="color:${stColor};font-size:12px;font-weight:bold;">${stEmoji} ${st}</span>
+        ${doc.modePaiement ? `<br><span style="font-size:11px;color:#64748b;">${escHtml(doc.modePaiement)}</span>` : ""}
+        ${doc.dateReglement ? `<br><span style="font-size:11px;color:#64748b;">${escHtml(doc.dateReglement)}</span>` : ""}
+        <br><button onclick="ouvrirReglementDoc(${i})" style="margin-top:4px;background:#0f172a;border:1px solid #334155;font-size:11px;padding:3px 7px;">💳 Régler</button>
+      </div>`;
+    }
+
+    return `<tr>
+      <td style="white-space:nowrap;">${escHtml(doc.date)}</td>
+      <td><span style="padding:3px 8px;border-radius:4px;font-size:12px;font-weight:bold;${typeBadge}color:#fff;">${typeLabel}</span></td>
       <td>${escHtml(doc.titre||"—")}</td>
-      <td>${escHtml(doc.dossierNumero||"—")}</td>
-      <td><b>${doc.totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></td>
-      <td style="white-space:nowrap">
-        <button onclick="chargerDocument(${i})">✏ Modifier</button>
-        <button onclick="genererPdfDocumentSaved(${i})">📄 PDF</button>
-        <button onclick="ouvrirRattachementDossier(${i})" style="background:#7c3aed;">📂 Rattacher dossier</button>
-        <button class="delete-btn" onclick="supprimerDocument(${i})">🗑</button>
+      <td style="font-size:12px;color:#94a3b8;">${escHtml(doc.dossierNumero||"—")}</td>
+      <td style="text-align:right;font-weight:bold;color:#38bdf8;">${doc.totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</td>
+      <td style="text-align:center;">${margeHtml}</td>
+      <td>${reglHtml}</td>
+      <td style="white-space:nowrap;">
+        <button onclick="chargerDocument(${i})" style="font-size:12px;padding:4px 8px;">✏️</button>
+        <button onclick="genererPdfDocumentSaved(${i})" style="font-size:12px;padding:4px 8px;">📄</button>
+        ${doc.type==="or" ? `<button onclick="imprimerOR(${i})" style="background:#7c3aed;font-size:12px;padding:4px 8px;">🖨️ OR</button>` : ""}
+        <button onclick="ouvrirRattachementDossier(${i})" style="background:#7c3aed;font-size:12px;padding:4px 8px;">📂</button>
+        <button class="delete-btn" onclick="supprimerDocument(${i})" style="font-size:12px;padding:4px 8px;">🗑</button>
       </td>
-    </tr>
-  `).join("");
+    </tr>`;
+  }).join("");
 }
 
 /* =====================================
@@ -6094,11 +6171,11 @@ function renderCatalogue(){
 function ajouterTarifAuDevis(idx){
   const t = catalogueTarifs[idx];
   if(!t) return;
-  if(typeof lignesDocument === "undefined"){ toast("Ouvrez d'abord le module Devis/Factures","error"); return; }
+  if(typeof lignesDocument === "undefined"){ toast("Erreur : lignesDocument introuvable","error"); return; }
   lignesDocument.push({ design: t.designation, qte: 1, prixHT: t.prixHT, tva: t.tva });
-  showPage("devisFacture");
-  setTimeout(()=>{ if(typeof renderLignes==="function") renderLignes(); }, 150);
-  toast(`"${t.designation}" ajouté au devis ✓`);
+  if(typeof renderLignes==="function") renderLignes();
+  document.getElementById("tableauLignes")?.scrollIntoView({behavior:"smooth", block:"center"});
+  toast(`"${t.designation}" ajouté au formulaire ✓`);
 }
 
 function ajouterTarifAuCalc(idx){
@@ -6235,8 +6312,10 @@ function envoyerCalcVersDevis(){
   if(_calcLignes.length === 0){ toast("Aucune ligne à envoyer","error"); return; }
   if(typeof lignesDocument === "undefined"){ toast("Module Devis/Factures indisponible","error"); return; }
   lignesDocument = _calcLignes.map(l=>({ design: l.designation, qte: l.qte, prixHT: l.prixHT, tva: l.tva }));
-  showPage("devisFacture");
-  setTimeout(()=>{ if(typeof renderLignes==="function") renderLignes(); toast(`${_calcLignes.length} ligne(s) envoyée(s) vers Devis/Factures ✓`); }, 150);
+  if(typeof renderLignes==="function") renderLignes();
+  // Scroll vers le formulaire de devis
+  document.getElementById("tableauLignes")?.scrollIntoView({behavior:"smooth", block:"center"});
+  toast(`${_calcLignes.length} ligne(s) envoyée(s) dans le formulaire ✓`);
 }
 
 function copierCalcTexte(){
@@ -6448,4 +6527,251 @@ function exporterCommandesCSV(){
   a.download = "commandes-"+new Date().toISOString().split("T")[0]+".csv";
   a.click();
   toast("Export CSV téléchargé ✓");
+}
+
+/* =====================================================================
+   SUIVI DES RÈGLEMENTS
+===================================================================== */
+
+function ouvrirReglementDoc(i){
+  const doc = documents[i];
+  if(!doc) return;
+  const montantRestant = (doc.totalTTC||0) - (doc.montantRegle||0);
+
+  ouvrirModal(`💳 Règlement — ${escHtml(doc.id)} (${doc.totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})} € TTC)`,
+    `<div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="background:#0f172a;border-radius:8px;padding:12px;display:flex;gap:20px;flex-wrap:wrap;">
+        <span>Total TTC : <b style="color:#38bdf8;">${doc.totalTTC.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></span>
+        <span>Déjà réglé : <b style="color:#34d399;">${(doc.montantRegle||0).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></span>
+        <span>Restant dû : <b style="color:#f87171;">${montantRestant.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></span>
+      </div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Statut règlement</label>
+          <select id="regl_statut" style="width:100%;box-sizing:border-box;">
+            <option value="Non réglé" ${(doc.statutReglement||"Non réglé")==="Non réglé"?"selected":""}>❌ Non réglé</option>
+            <option value="Partiel"   ${(doc.statutReglement)==="Partiel"?"selected":""}>⚠️ Partiel</option>
+            <option value="Réglé"     ${(doc.statutReglement)==="Réglé"?"selected":""}>✅ Réglé</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Mode de paiement</label>
+          <select id="regl_mode" style="width:100%;box-sizing:border-box;">
+            <option value="">— Choisir —</option>
+            ${["Espèces","Chèque","Carte bancaire","Virement","Assurance","Mixte"].map(m=>`<option value="${m}" ${doc.modePaiement===m?"selected":""}>${m}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Montant réglé (€)</label>
+          <input type="number" id="regl_montant" value="${doc.montantRegle||doc.totalTTC||0}" step="0.01" min="0" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Date du règlement</label>
+          <input type="date" id="regl_date" value="${doc.dateReglement||new Date().toISOString().split("T")[0]}" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Référence / Note</label>
+          <input type="text" id="regl_note" value="${escHtml(doc.noteReglement||"")}" placeholder="N° chèque, référence virement, nom assurance..." style="width:100%;box-sizing:border-box;">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="reglementRapide(${i}, 'Réglé', 'Espèces')" style="background:#14532d;font-size:12px;">💵 Réglé en espèces</button>
+        <button onclick="reglementRapide(${i}, 'Réglé', 'Carte bancaire')" style="background:#1e40af;font-size:12px;">💳 Réglé par CB</button>
+        <button onclick="reglementRapide(${i}, 'Réglé', 'Chèque')" style="background:#78350f;font-size:12px;">📝 Réglé par chèque</button>
+      </div>
+    </div>`,
+    function(){
+      documents[i].statutReglement = document.getElementById("regl_statut")?.value || "Non réglé";
+      documents[i].modePaiement    = document.getElementById("regl_mode")?.value   || "";
+      documents[i].montantRegle    = parseFloat(document.getElementById("regl_montant")?.value||"0")||0;
+      documents[i].dateReglement   = document.getElementById("regl_date")?.value   || "";
+      documents[i].noteReglement   = document.getElementById("regl_note")?.value.trim() || "";
+      localStorage.setItem("documents", JSON.stringify(documents));
+      if(db && _firebaseActif) db.ref("/documents").set(documents).catch(()=>{});
+      renderDocuments();
+      toast(`Règlement mis à jour : ${documents[i].statutReglement} ✓`);
+    }
+  );
+}
+
+function reglementRapide(i, statut, mode){
+  const doc = documents[i];
+  if(!doc) return;
+  doc.statutReglement = statut;
+  doc.modePaiement    = mode;
+  doc.montantRegle    = doc.totalTTC;
+  doc.dateReglement   = new Date().toISOString().split("T")[0];
+  localStorage.setItem("documents", JSON.stringify(documents));
+  if(db && _firebaseActif) db.ref("/documents").set(documents).catch(()=>{});
+  // Fermer modal si ouverte
+  const modal = document.getElementById("modal");
+  if(modal) modal.style.display = "none";
+  renderDocuments();
+  toast(`✅ Facture ${doc.id} marquée réglée en ${mode}`);
+}
+
+function exporterDocumentsCSV(){
+  const lignes = ["N° Doc;Date;Type;Titre;Dossier;Total HT;TVA;Total TTC;Coût Achat;Marge HT;% Marge;Statut Règlement;Mode Paiement;Date Règlement;Montant Réglé"];
+  documents.forEach(d=>{
+    lignes.push([
+      d.id||"", d.date||"", d.type||"", d.titre||"", d.dossierNumero||"",
+      (d.totalHT||0).toFixed(2), (d.totalTVA||0).toFixed(2), (d.totalTTC||0).toFixed(2),
+      (d.coutAchat||0).toFixed(2), (d.margeHT||0).toFixed(2), (d.margePct||0).toFixed(1)+"%",
+      d.statutReglement||"—", d.modePaiement||"", d.dateReglement||"", (d.montantRegle||0).toFixed(2)
+    ].join(";"));
+  });
+  const blob = new Blob(["\uFEFF"+lignes.join("\n")], {type:"text/csv;charset=utf-8;"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "documents-"+new Date().toISOString().split("T")[0]+".csv";
+  a.click();
+  toast("Export CSV téléchargé ✓");
+}
+
+/* =====================================================================
+   ORDRE DE RÉPARATION (OR) — PDF SPÉCIFIQUE
+===================================================================== */
+
+function imprimerOR(i){
+  const doc = documents[i];
+  if(!doc){ toast("Document introuvable","error"); return; }
+  if(!window.jspdf){ toast("Bibliothèque PDF non chargée","error"); return; }
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF();
+
+  const dossier = doc.dossierIdx !== null ? dossiers[doc.dossierIdx] : null;
+  const today   = new Date().toLocaleDateString("fr-FR");
+
+  // En-tête
+  pdf.setFillColor(15,23,42);
+  pdf.rect(0, 0, 210, 35, "F");
+  pdf.setTextColor(255,255,255);
+  pdf.setFontSize(20); pdf.setFont(undefined,"bold");
+  pdf.text("ORDRE DE RÉPARATION", 105, 15, {align:"center"});
+  pdf.setFontSize(10); pdf.setFont(undefined,"normal");
+  pdf.text(`N° ${doc.id}`, 105, 23, {align:"center"});
+  pdf.text(`Date : ${doc.date||today}`, 105, 29, {align:"center"});
+
+  // Infos garage
+  pdf.setTextColor(0,0,0);
+  pdf.setFontSize(9);
+  let y = 42;
+  if(entreprise?.nom){
+    pdf.setFont(undefined,"bold"); pdf.text(entreprise.nom, 14, y); pdf.setFont(undefined,"normal");
+    y += 5;
+    if(entreprise.adresse)    { pdf.text(entreprise.adresse, 14, y); y+=4; }
+    if(entreprise.telephone)  { pdf.text("Tél : "+entreprise.telephone, 14, y); y+=4; }
+    if(entreprise.siret)      { pdf.text("SIRET : "+entreprise.siret, 14, y); y+=4; }
+  }
+
+  // Infos client / véhicule
+  if(dossier){
+    pdf.setFillColor(241,245,249); pdf.rect(105, 38, 95, 30, "F");
+    pdf.setFontSize(9); pdf.setFont(undefined,"bold");
+    pdf.text("CLIENT / VÉHICULE", 107, 44);
+    pdf.setFont(undefined,"normal");
+    pdf.text(dossier.client||"", 107, 50);
+    pdf.text(`Véhicule : ${dossier.marque||""} ${dossier.modele||""}`, 107, 55);
+    pdf.text(`Immat : ${dossier.immat||""}`, 107, 60);
+    if(dossier.km) pdf.text(`Kilométrage : ${dossier.km} km`, 107, 65);
+  }
+
+  y = Math.max(y, 72) + 4;
+
+  // Technicien
+  if(doc.technicien){
+    pdf.setFontSize(10); pdf.setFont(undefined,"bold");
+    pdf.text(`Technicien : ${doc.technicien}`, 14, y); y += 8;
+    pdf.setFont(undefined,"normal");
+  }
+
+  // Titre intervention
+  if(doc.titre){
+    pdf.setFontSize(11); pdf.setFont(undefined,"bold");
+    pdf.text(`Objet : ${doc.titre}`, 14, y); y += 8;
+    pdf.setFont(undefined,"normal"); pdf.setFontSize(10);
+  }
+
+  // Tableau travaux
+  y += 3;
+  pdf.setFillColor(15,23,42);
+  pdf.rect(14, y, 182, 7, "F");
+  pdf.setTextColor(255,255,255); pdf.setFontSize(9); pdf.setFont(undefined,"bold");
+  pdf.text("□", 16, y+5);
+  pdf.text("Désignation des travaux / pièces", 26, y+5);
+  pdf.text("Qté", 135, y+5);
+  pdf.text("PU HT", 150, y+5);
+  pdf.text("Total HT", 170, y+5);
+  y += 9;
+
+  let totalHT = 0, totalTVA = 0;
+  pdf.setTextColor(0,0,0); pdf.setFont(undefined,"normal"); pdf.setFontSize(9);
+
+  doc.lignes.forEach((l, idx) => {
+    const ht = (l.qte||l.quantite||1) * (l.prixHT||l.prix||0);
+    totalHT  += ht;
+    totalTVA += ht * ((l.tva||20)/100);
+
+    if(idx % 2 === 0){ pdf.setFillColor(248,250,252); pdf.rect(14, y-1, 182, 7, "F"); }
+    pdf.rect(15, y, 5, 5); // Case à cocher
+    const designation = (l.designation||l.design||"").substring(0, 60);
+    pdf.text(designation, 26, y+4);
+    pdf.text(String(l.qte||l.quantite||1), 137, y+4);
+    pdf.text((l.prixHT||l.prix||0).toFixed(2)+" €", 148, y+4);
+    pdf.text(ht.toFixed(2)+" €", 168, y+4);
+    y += 8;
+    if(y > 250){ pdf.addPage(); y = 20; }
+  });
+
+  // Totaux
+  y += 4;
+  pdf.setDrawColor(200,200,200); pdf.line(14, y, 196, y); y += 5;
+  pdf.setFont(undefined,"bold");
+  pdf.text("Total HT", 140, y); pdf.text(totalHT.toFixed(2)+" €", 175, y, {align:"right"}); y+=6;
+  pdf.text(`TVA 20%`,  140, y); pdf.text(totalTVA.toFixed(2)+" €", 175, y, {align:"right"}); y+=6;
+  pdf.setFontSize(12);
+  pdf.text("TOTAL TTC", 138, y); pdf.text((totalHT+totalTVA).toFixed(2)+" €", 175, y, {align:"right"}); y+=10;
+
+  // Zone signatures
+  pdf.setFontSize(9); pdf.setFont(undefined,"normal");
+  pdf.setFillColor(248,250,252); pdf.rect(14, y, 85, 28, "F");
+  pdf.rect(111, y, 85, 28, "F");
+  pdf.text("Signature client (bon pour accord) :", 16, y+6);
+  pdf.text("Visa technicien :", 113, y+6);
+  pdf.text("Date : ___________________", 16, y+20);
+  pdf.text("Date : ___________________", 113, y+20);
+
+  // Mentions légales
+  y += 35;
+  pdf.setFontSize(7); pdf.setTextColor(120,120,120);
+  pdf.text("Document à conserver. En signant cet OR, le client accepte les conditions générales de vente et autorise les travaux listés.", 14, y);
+
+  pdf.save(`OR-${doc.id}-${doc.date||today}.pdf`);
+  toast("Ordre de réparation PDF généré ✓");
+}
+
+/* =====================================================================
+   CALCUL DE MARGE — AFFICHAGE DANS LE FORMULAIRE EN TEMPS RÉEL
+===================================================================== */
+
+// Appeler après chaque modification de ligne ou de coût achat
+function majAffichageMarge(){
+  const zoneM = document.getElementById("aperçuMarge");
+  if(!zoneM) return;
+
+  let totalHT = 0;
+  lignesDocument.forEach(l=>{
+    totalHT += (l.qte||1) * (l.prixHT||0);
+  });
+  const coutAchat = parseFloat(document.getElementById("coutAchatPieces")?.value||"0")||0;
+  const margeHT   = totalHT - coutAchat;
+  const margePct  = totalHT > 0 ? (margeHT/totalHT*100) : 0;
+  const color     = margePct >= 40 ? "#34d399" : margePct >= 20 ? "#f59e0b" : "#f87171";
+
+  zoneM.innerHTML = totalHT > 0 ? `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:13px;color:#94a3b8;">Total HT vente : <b style="color:#38bdf8;">${totalHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></span>
+      <span style="font-size:13px;color:#94a3b8;">Coût achat : <b style="color:#f87171;">${coutAchat.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b></span>
+      <span style="font-size:13px;color:#94a3b8;">Marge : <b style="color:${color};font-size:15px;">${margeHT.toLocaleString("fr-FR",{minimumFractionDigits:2})} € (${margePct.toFixed(1)}%)</b></span>
+    </div>` : "";
 }

@@ -46,14 +46,12 @@
       <a href="#" onclick="showPage('mecanique');setActive(this)">🔩 Dossiers mécanique</a>
 
       <div class="nav-section-label">💼 GESTION</div>
-      <a href="#" onclick="showPage('devisFacture');setActive(this)">🧾 Devis / Factures</a>
+      <a href="#" onclick="showPage('devisFacture');setActive(this)">🧾 Devis / Factures &amp; Outils</a>
       <a href="#" onclick="showPage('entreprise');setActive(this)">⚙ Entreprise</a>
       <a href="#" id="lienAdmin" onclick="showPage('administration');setActive(this)" style="display:none;border-top:1px solid #1e3a5f;margin-top:8px;padding-top:12px;color:#a78bfa;">🔑 Administration</a>
 
       <div class="nav-section-label">🆕 NOUVELLES FONCTIONS</div>
       <a href="#" onclick="showPage('stockPieces');setActive(this)">📦 Stock de pièces <span id="badgeStock" style="background:#dc2626;color:#fff;border-radius:9999px;padding:1px 7px;font-size:11px;margin-left:4px;font-weight:bold;display:none;"></span></a>
-      <a href="#" onclick="showPage('planningTechniciens');setActive(this)">👷 Planning techniciens</a>
-      <a href="#" onclick="showPage('outilsRapides');setActive(this)">⚡ Outils rapides</a>
 
       <div class="nav-section-label">⚙ OUTILS</div>
       <a href="#" id="btnTheme" onclick="toggleTheme();return false;">☀️ Mode clair</a>
@@ -603,7 +601,24 @@
         </table>
       </div>
 
-    </section>
+    
+      <!-- ── PLANNING TECHNICIENS ── -->
+      <div style="margin-top:28px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <h2 style="margin:0;">👷 Planning techniciens</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button onclick="semainePrec()" style="background:#334155;">◀ Préc.</button>
+            <span id="labelSemaine" style="font-size:14px;font-weight:bold;color:#38bdf8;min-width:200px;text-align:center;"></span>
+            <button onclick="semaineSuiv()" style="background:#334155;">Suiv. ▶</button>
+            <button onclick="semaineAujourd()">📅 Aujourd'hui</button>
+            <button onclick="ouvrirAjoutTache()" class="btn-success">➕ Tâche</button>
+          </div>
+        </div>
+        <div id="legendeTechniciens" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <div id="grillePlanning" style="overflow-x:auto;"></div>
+      </div>
+
+</section>
 
     <!-- ENTREPRISE -->
     <section id="entreprise" class="page hidden">
@@ -680,9 +695,11 @@
           <select id="typeDocument" onchange="majNumeroDocument()">
             <option value="devis">Devis</option>
             <option value="facture">Facture</option>
+            <option value="or">Ordre de Réparation</option>
           </select>
           <input type="date" id="dateDocument">
           <input type="text" id="technicienDocument" placeholder="Technicien">
+          <input type="number" id="coutAchatPieces" placeholder="Coût achat pièces HT (€)" step="0.01" min="0" title="Prix d'achat réel des pièces (pour calcul de marge)" oninput="majAffichageMarge()">
         </div>
 
       </div>
@@ -742,7 +759,10 @@
           </table>
         </div>
 
-        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+        <!-- Aperçu marge temps réel -->
+        <div id="aperçuMarge" style="margin-top:12px;padding:10px 14px;background:#0f172a;border-radius:8px;border:1px solid #1e293b;min-height:0;"></div>
+
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
           <button onclick="genererPdfDocument()">📄 Générer PDF</button>
           <button onclick="sauvegarderDocument()" class="btn-success">💾 Sauvegarder</button>
           <button onclick="ouvrirTransfertVersDossier()" style="background:#7c3aed;">📂 Transférer vers dossier</button>
@@ -772,9 +792,136 @@
         </div>
       </div>
 
+
+      <!-- ── OUTILS RAPIDES ── -->
+      <div class="card" style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <h2 style="margin:0;color:#38bdf8;">📋 Catalogue de prix</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="catalogueFiltreCategorie" onchange="renderCatalogue()" style="min-width:140px;">
+              <option value="">Toutes catégories</option>
+              <option value="Vitrage">🪟 Vitrage</option>
+              <option value="Mécanique">🔩 Mécanique</option>
+              <option value="Carrosserie">🚗 Carrosserie</option>
+              <option value="Électrique">⚡ Électrique</option>
+            </select>
+            <button onclick="ouvrirAjoutTarif()" class="btn-success">➕ Tarif</button>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Cliquez <b>➕ Au devis</b> pour injecter directement une ligne dans le formulaire ci-dessus.</p>
+        <div id="listeCatalogue" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;"></div>
+      </div>
+
+      <div class="card" style="margin-top:8px;">
+        <h2 style="color:#34d399;margin-bottom:14px;">🧮 Calculateur rapide</h2>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Construisez un devis express, puis envoyez-le dans le formulaire ci-dessus.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;">
+          <div style="flex:2;min-width:150px;">
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">Désignation</label>
+            <input type="text" id="calcDesign" placeholder="Ex: MO freinage avant" style="width:100%;box-sizing:border-box;" onkeydown="if(event.key==='Enter') ajouterLigneCalc()">
+          </div>
+          <div style="width:60px;">
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">Qté</label>
+            <input type="number" id="calcQte" value="1" min="0.5" step="0.5" style="width:100%;box-sizing:border-box;">
+          </div>
+          <div style="width:95px;">
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">Prix HT (€)</label>
+            <input type="number" id="calcPrix" placeholder="0.00" step="0.01" style="width:100%;box-sizing:border-box;" onkeydown="if(event.key==='Enter') ajouterLigneCalc()">
+          </div>
+          <div style="width:75px;">
+            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">TVA %</label>
+            <select id="calcTVA" style="width:100%;box-sizing:border-box;">
+              <option value="20">20%</option><option value="10">10%</option><option value="5.5">5,5%</option><option value="0">0%</option>
+            </select>
+          </div>
+          <button onclick="ajouterLigneCalc()" class="btn-success">➕</button>
+        </div>
+        <div class="table-wrapper" style="margin-bottom:10px;">
+          <table>
+            <thead><tr>
+              <th>Désignation</th>
+              <th style="width:50px;text-align:center;">Qté</th>
+              <th style="width:95px;text-align:right;">PU HT</th>
+              <th style="width:55px;text-align:center;">TVA</th>
+              <th style="width:105px;text-align:right;">Total TTC</th>
+              <th style="width:36px;"></th>
+            </tr></thead>
+            <tbody id="calcLignes"></tbody>
+            <tfoot>
+              <tr style="background:#0f172a;font-weight:bold;">
+                <td colspan="2" style="padding:8px 10px;">TOTAL</td>
+                <td style="padding:8px;text-align:right;color:#94a3b8;font-size:12px;"><span id="calcTotalHT">0,00 €</span> HT</td>
+                <td style="padding:8px;text-align:center;color:#64748b;font-size:12px;"><span id="calcTotalTVA">0,00 €</span></td>
+                <td style="padding:8px;text-align:right;color:#34d399;font-size:14px;"><span id="calcTotalTTC">0,00 €</span></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="envoyerCalcVersDevis()" class="btn-success">📤 Envoyer vers formulaire</button>
+          <button onclick="copierCalcTexte()" style="background:#334155;">📋 Copier texte</button>
+          <button onclick="viderCalc()" style="background:#7f1d1d;">🗑 Vider</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <h2 style="margin:0;color:#f59e0b;">🏭 Commandes fournisseurs</h2>
+          <button onclick="ouvrirAjoutCommande()" class="btn-success">➕ Commande</button>
+        </div>
+        <div class="cards" style="margin-bottom:12px;">
+          <div class="card compteur-card" style="border-top:3px solid #f59e0b;"><h3>⏳ En attente</h3><span id="cmdAttente" style="color:#f59e0b;">0</span></div>
+          <div class="card compteur-card" style="border-top:3px solid #2563eb;"><h3>🚚 En cours</h3><span id="cmdEnCours" style="color:#2563eb;">0</span></div>
+          <div class="card compteur-card" style="border-top:3px solid #16a34a;"><h3>✅ Reçues</h3><span id="cmdRecues" style="color:#16a34a;">0</span></div>
+          <div class="card compteur-card" style="border-top:3px solid #dc2626;"><h3>💰 Montant</h3><span id="cmdMontantTotal" style="color:#dc2626;font-size:16px;">0 €</span></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">
+          <select id="cmdFiltreStatut" onchange="renderCommandes()" style="min-width:150px;">
+            <option value="">Tous statuts</option>
+            <option value="En attente">⏳ En attente</option>
+            <option value="En cours">🚚 En cours</option>
+            <option value="Reçue">✅ Reçue</option>
+            <option value="Annulée">❌ Annulée</option>
+          </select>
+          <select id="cmdFiltreFournisseur" onchange="renderCommandes()" style="min-width:160px;">
+            <option value="">Tous fournisseurs</option>
+          </select>
+          <button onclick="exporterCommandesCSV()" style="background:#0891b2;">📊 CSV</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr>
+              <th>N° Cmd</th><th>Date</th><th>Fournisseur</th><th>Désignation / Réf.</th>
+              <th>Qté</th><th>Montant HT</th><th>Dossier</th><th>Statut</th><th>Livraison</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="listeCommandes"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Liste documents sauvegardés -->
       <div class="card">
-        <h2>📋 Documents enregistrés</h2>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <h2 style="margin:0;">📋 Documents enregistrés</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="filtreTypeDoc" onchange="renderDocuments()" style="min-width:130px;">
+              <option value="">Tous types</option>
+              <option value="devis">Devis</option>
+              <option value="facture">Factures</option>
+              <option value="or">Ordres de réparation</option>
+            </select>
+            <select id="filtreReglementDoc" onchange="renderDocuments()" style="min-width:150px;">
+              <option value="">Tous règlements</option>
+              <option value="Non réglé">❌ Non réglé</option>
+              <option value="Partiel">⚠️ Partiel</option>
+              <option value="Réglé">✅ Réglé</option>
+              <option value="—">— (devis/OR)</option>
+            </select>
+            <button onclick="exporterDocumentsCSV()" style="background:#0891b2;font-size:12px;">📊 CSV</button>
+          </div>
+        </div>
+        <div id="resumeDocuments" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;"></div>
         <div class="table-wrapper">
           <table>
             <thead>
@@ -784,6 +931,8 @@
                 <th>Titre</th>
                 <th>Dossier</th>
                 <th>Total TTC</th>
+                <th>Marge</th>
+                <th>Règlement</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1176,179 +1325,6 @@
 
       <!-- Alertes rupture -->
       <div id="alertesStock" style="margin-top:20px;"></div>
-    </section>
-
-    <!-- ========== PLANNING TECHNICIENS ========== -->
-    <section id="planningTechniciens" class="page hidden">
-      <h2>👷 Planning techniciens</h2>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
-        <button onclick="semainePrec()" style="background:#334155;">◀ Semaine préc.</button>
-        <span id="labelSemaine" style="font-size:15px;font-weight:bold;color:#38bdf8;min-width:220px;text-align:center;"></span>
-        <button onclick="semaineSuiv()" style="background:#334155;">Semaine suiv. ▶</button>
-        <button onclick="semaineAujourd()">📅 Aujourd'hui</button>
-        <button onclick="ouvrirAjoutTache()" class="btn-success">➕ Nouvelle tâche</button>
-      </div>
-
-      <!-- Légende techniciens -->
-      <div id="legendeTechniciens" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;"></div>
-
-      <!-- Grille planning -->
-      <div id="grillePlanning" style="overflow-x:auto;"></div>
-
-      <!-- Tâches du jour détail -->
-      <div id="detailPlanning" style="margin-top:20px;"></div>
-    </section>
-
-
-    <!-- ========== OUTILS RAPIDES ========== -->
-    <section id="outilsRapides" class="page hidden">
-      <h2>⚡ Outils rapides</h2>
-
-      <!-- ── CATALOGUE DE PRIX ── -->
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-          <h3 style="color:#38bdf8;margin:0;">📋 Catalogue de prix</h3>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <select id="catalogueFiltreCategorie" onchange="renderCatalogue()" style="min-width:140px;">
-              <option value="">Toutes catégories</option>
-              <option value="Vitrage">🪟 Vitrage</option>
-              <option value="Mécanique">🔩 Mécanique</option>
-              <option value="Carrosserie">🚗 Carrosserie</option>
-              <option value="Électrique">⚡ Électrique</option>
-            </select>
-            <button onclick="ouvrirAjoutTarif()" class="btn-success">➕ Ajouter tarif</button>
-          </div>
-        </div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Cliquez sur <b>➕ Ajouter au devis</b> pour injecter directement une ligne dans le devis en cours.</p>
-        <div id="listeCatalogue" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;"></div>
-      </div>
-
-      <!-- ── CALCULATEUR DE DEVIS RAPIDE ── -->
-      <div class="card">
-        <h3 style="color:#34d399;margin-bottom:16px;">🧮 Calculateur de devis rapide</h3>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Construisez un devis ligne par ligne, copiez-le ou envoyez-le directement vers le module Devis/Factures.</p>
-
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;">
-          <div style="flex:2;min-width:160px;">
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">Désignation</label>
-            <input type="text" id="calcDesign" placeholder="Ex: Main d'œuvre freinage avant" style="width:100%;box-sizing:border-box;">
-          </div>
-          <div style="width:65px;">
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">Qté</label>
-            <input type="number" id="calcQte" value="1" min="0.5" step="0.5" style="width:100%;box-sizing:border-box;">
-          </div>
-          <div style="width:100px;">
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">Prix HT (€)</label>
-            <input type="number" id="calcPrix" placeholder="0.00" step="0.01" style="width:100%;box-sizing:border-box;">
-          </div>
-          <div style="width:80px;">
-            <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:3px;">TVA %</label>
-            <select id="calcTVA" style="width:100%;box-sizing:border-box;">
-              <option value="20">20%</option>
-              <option value="10">10%</option>
-              <option value="5.5">5,5%</option>
-              <option value="0">0%</option>
-            </select>
-          </div>
-          <button onclick="ajouterLigneCalc()" class="btn-success" style="white-space:nowrap;">➕ Ajouter</button>
-        </div>
-
-        <!-- Tableau lignes devis rapide -->
-        <div class="table-wrapper" style="margin-bottom:14px;">
-          <table>
-            <thead>
-              <tr>
-                <th>Désignation</th>
-                <th style="width:50px;text-align:center;">Qté</th>
-                <th style="width:100px;text-align:right;">PU HT</th>
-                <th style="width:60px;text-align:center;">TVA</th>
-                <th style="width:110px;text-align:right;">Total TTC</th>
-                <th style="width:40px;"></th>
-              </tr>
-            </thead>
-            <tbody id="calcLignes"></tbody>
-            <tfoot>
-              <tr style="background:#0f172a;font-weight:bold;">
-                <td colspan="2" style="padding:10px;">TOTAL</td>
-                <td style="padding:10px;text-align:right;color:#94a3b8;"><span id="calcTotalHT">0,00 €</span> HT</td>
-                <td style="padding:10px;text-align:center;color:#64748b;"><span id="calcTotalTVA">0,00 €</span></td>
-                <td style="padding:10px;text-align:right;color:#34d399;font-size:15px;"><span id="calcTotalTTC">0,00 €</span></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button onclick="envoyerCalcVersDevis()" class="btn-success">📤 Envoyer vers Devis/Factures</button>
-          <button onclick="copierCalcTexte()" style="background:#334155;">📋 Copier en texte</button>
-          <button onclick="viderCalc()" style="background:#7f1d1d;">🗑 Vider</button>
-        </div>
-      </div>
-
-      <!-- ── FOURNISSEURS / COMMANDES ── -->
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-          <h3 style="color:#f59e0b;margin:0;">🏭 Commandes fournisseurs</h3>
-          <button onclick="ouvrirAjoutCommande()" class="btn-success">➕ Nouvelle commande</button>
-        </div>
-
-        <!-- Compteurs commandes -->
-        <div class="cards" style="margin-bottom:16px;">
-          <div class="card compteur-card" style="border-top:3px solid #f59e0b;">
-            <h3>⏳ En attente</h3>
-            <span id="cmdAttente" style="color:#f59e0b;">0</span>
-          </div>
-          <div class="card compteur-card" style="border-top:3px solid #2563eb;">
-            <h3>🚚 En cours</h3>
-            <span id="cmdEnCours" style="color:#2563eb;">0</span>
-          </div>
-          <div class="card compteur-card" style="border-top:3px solid #16a34a;">
-            <h3>✅ Reçues</h3>
-            <span id="cmdRecues" style="color:#16a34a;">0</span>
-          </div>
-          <div class="card compteur-card" style="border-top:3px solid #dc2626;">
-            <h3>💰 Montant total</h3>
-            <span id="cmdMontantTotal" style="color:#dc2626;font-size:18px;">0 €</span>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
-          <select id="cmdFiltreStatut" onchange="renderCommandes()" style="min-width:160px;">
-            <option value="">Tous les statuts</option>
-            <option value="En attente">⏳ En attente</option>
-            <option value="En cours">🚚 En cours de livraison</option>
-            <option value="Reçue">✅ Reçue</option>
-            <option value="Annulée">❌ Annulée</option>
-          </select>
-          <select id="cmdFiltreFournisseur" onchange="renderCommandes()" style="min-width:180px;">
-            <option value="">Tous les fournisseurs</option>
-          </select>
-          <button onclick="exporterCommandesCSV()" style="background:#0891b2;">📊 Export CSV</button>
-        </div>
-
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>N° Cmd</th>
-                <th>Date</th>
-                <th>Fournisseur</th>
-                <th>Pièce / Référence</th>
-                <th>Qté</th>
-                <th>Montant HT</th>
-                <th>Dossier lié</th>
-                <th>Statut</th>
-                <th>Livraison prévue</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="listeCommandes"></tbody>
-          </table>
-        </div>
-      </div>
-
     </section>
 
   </main>
